@@ -1,25 +1,25 @@
 package extract
 
 import (
-    "essai/ntfstool/core"
-    "fmt"
-    "os"
-    "reflect"
+	"essai/ntfstool/core"
+	"fmt"
+	"os"
+	"reflect"
 )
 
 const FILENODES_FORMAT_NAME = "File nodes"
 
 type IFile interface {
-    core.IDataRecord
+	core.IDataRecord
 
-    GetFile() *File
-    IsRoot() bool
-    IsFile() bool
-    IsDir() bool
+	GetFile() *File
+	IsRoot() bool
+	IsFile() bool
+	IsDir() bool
 }
 
 type tNoneFile struct {
-    core.BaseDataRecord
+	core.BaseDataRecord
 }
 
 func (self *tNoneFile) IsRoot() bool   { return false }
@@ -28,16 +28,16 @@ func (self *tNoneFile) IsDir() bool    { return false }
 func (self *tNoneFile) GetFile() *File { return nil }
 
 type File struct {
-    tNoneFile
+	tNoneFile
 
-    Ref      int64
-    Id       string
-    Mft      string
-    Parent   string
-    Position int64
-    Size     uint64
-    Name     string
-    RunList  core.RunList
+	Ref      int64
+	Id       string
+	Mft      string
+	Parent   string
+	Position int64
+	Size     uint64
+	Name     string
+	RunList  core.RunList
 }
 
 func (self *File) IsRoot() bool            { return len(self.Parent) == 0 }
@@ -48,9 +48,9 @@ func (self *File) GetFile() *File          { return self }
 func (self *File) Print()                  { core.PrintStruct(self) }
 
 type tFileError struct {
-    tNoneFile
+	tNoneFile
 
-    err error
+	err error
 }
 
 func (self *tFileError) GetError() error { return self.err }
@@ -58,143 +58,143 @@ func (self *tFileError) GetFile() *File  { return nil }
 func (self *tFileError) Print()          { fmt.Println("Error:", self.err) }
 
 func init() {
-    core.RegisterFileFormat(FILENODES_FORMAT_NAME, "[NTFS - FNODES]", new(File))
+	core.RegisterFileFormat(FILENODES_FORMAT_NAME, "[NTFS - FNODES]", new(File))
 }
 
 type FileStream <-chan IFile
 
 func (self FileStream) Close() error {
-    defer func() {
-        recover()
-    }()
+	defer func() {
+		recover()
+	}()
 
-    reflect.ValueOf(self).Close()
+	reflect.ValueOf(self).Close()
 
-    return nil
+	return nil
 }
 
 type tFileStream struct {
-    stream chan IFile
+	stream chan IFile
 }
 
 func (self *tFileStream) Close() error {
-    close(self.stream)
+	close(self.stream)
 
-    return nil
+	return nil
 }
 
 func (self *tFileStream) SendRecord(rec core.IDataRecord) {
-    self.stream <- rec.(*File)
+	self.stream <- rec.(*File)
 }
 
 func (self *tFileStream) SendError(err error) {
-    self.stream <- &tFileError{err: err}
+	self.stream <- &tFileError{err: err}
 }
 
 type FileReader struct {
-    reader *core.DataReader
+	reader *core.DataReader
 }
 
 func (self *FileReader) Close() error {
-    return self.reader.Close()
+	return self.reader.Close()
 }
 
 func (self *FileReader) GetCount() int {
-    return self.reader.GetCount()
+	return self.reader.GetCount()
 }
 
 func (self *FileReader) ReadRecord(position int64) (IFile, error) {
-    rec, err := self.reader.ReadRecord(position)
-    if err != nil {
-        return nil, err
-    }
+	rec, err := self.reader.ReadRecord(position)
+	if err != nil {
+		return nil, err
+	}
 
-    res, ok := rec.(IFile)
-    if !ok {
-        return nil, core.WrapError(fmt.Errorf("Bad record type"))
-    }
+	res, ok := rec.(IFile)
+	if !ok {
+		return nil, core.WrapError(fmt.Errorf("Bad record type"))
+	}
 
-    return res, nil
+	return res, nil
 }
 
 func (self *FileReader) GetRecordAt(index int) (IFile, error) {
-    rec, err := self.reader.GetRecordAt(index)
-    if err != nil {
-        return nil, err
-    }
+	rec, err := self.reader.GetRecordAt(index)
+	if err != nil {
+		return nil, err
+	}
 
-    res, ok := rec.(IFile)
-    if !ok {
-        return nil, core.WrapError(fmt.Errorf("Bad record type"))
-    }
+	res, ok := rec.(IFile)
+	if !ok {
+		return nil, core.WrapError(fmt.Errorf("Bad record type"))
+	}
 
-    return res, nil
+	return res, nil
 }
 
 func (self *FileReader) MakeStream() (FileStream, error) {
-    res := make(chan IFile)
+	res := make(chan IFile)
 
-    if err := self.reader.InitStream(&tFileStream{res}); err != nil {
-        return nil, err
-    }
+	if err := self.reader.InitStream(&tFileStream{res}); err != nil {
+		return nil, err
+	}
 
-    return FileStream(res), nil
+	return FileStream(res), nil
 }
 
 func OpenFileReader(filename string) (*FileReader, error) {
-    f, err := core.OpenFile(filename, core.OPEN_RDONLY)
-    if err != nil {
-        return nil, core.WrapError(err)
-    }
+	f, err := core.OpenFile(filename, core.OPEN_RDONLY)
+	if err != nil {
+		return nil, core.WrapError(err)
+	}
 
-    defer core.DeferedCall(f.Close)
+	defer core.DeferedCall(f.Close)
 
-    return MakeFileReader(f)
+	return MakeFileReader(f)
 }
 
 func MakeFileReader(file *os.File) (*FileReader, error) {
-    reader, err := core.MakeDataReader(file, FILENODES_FORMAT_NAME)
-    if err != nil {
-        return nil, err
-    }
+	reader, err := core.MakeDataReader(file, FILENODES_FORMAT_NAME)
+	if err != nil {
+		return nil, err
+	}
 
-    res := &FileReader{
-        reader: reader,
-    }
+	res := &FileReader{
+		reader: reader,
+	}
 
-    return res, nil
+	return res, nil
 }
 
 type FileWriter struct {
-    writer *core.DataWriter
+	writer *core.DataWriter
 }
 
 func (self *FileWriter) Close() (err error) {
-    return self.writer.Close()
+	return self.writer.Close()
 }
 
 func (self *FileWriter) Write(rec IFile) error {
-    return self.writer.Write(rec)
+	return self.writer.Write(rec)
 }
 
 func OpenFileWriter(filename string) (*FileWriter, error) {
-    f, err := core.OpenFile(filename, core.OPEN_WRONLY)
-    if err != nil {
-        return nil, core.WrapError(err)
-    }
+	f, err := core.OpenFile(filename, core.OPEN_WRONLY)
+	if err != nil {
+		return nil, core.WrapError(err)
+	}
 
-    return MakeFileWriter(f)
+	return MakeFileWriter(f)
 }
 
 func MakeFileWriter(file *os.File) (*FileWriter, error) {
-    writer, err := core.MakeDataWriter(file, FILENODES_FORMAT_NAME)
-    if err != nil {
-        return nil, err
-    }
+	writer, err := core.MakeDataWriter(file, FILENODES_FORMAT_NAME)
+	if err != nil {
+		return nil, err
+	}
 
-    res := &FileWriter{
-        writer: writer,
-    }
+	res := &FileWriter{
+		writer: writer,
+	}
 
-    return res, nil
+	return res, nil
 }

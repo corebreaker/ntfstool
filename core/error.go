@@ -24,7 +24,7 @@ func (self *tError) Error() string {
     }
 
     if len(self.trace) > 0 {
-        fmt.Fprintln(&out, "------------------------------------------------------------------------------")
+        fmt.Fprintln(&out, "-------------------------------------------------------------------------------")
     }
 
     return out.String()
@@ -100,7 +100,7 @@ func GetSource(err error) error {
 
     t_err, ok := err.(*tError)
     if !ok {
-        return nil
+        return err
     }
 
     return t_err.source
@@ -162,14 +162,14 @@ func Abort(err error) {
     os.Exit(1)
 }
 
-type MainHandler func() error
+type Handler func() error
 
-func CheckedMain(main_task_func MainHandler) {
+func CheckedMain(main_task_func Handler) {
     if err := main_task_func(); err != nil {
         Abort(err)
     }
 }
 
-func DeferedCall(defered_func MainHandler) {
+func DeferedCall(defered_func Handler) {
     PrintError(defered_func())
 }
