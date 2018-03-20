@@ -100,6 +100,16 @@ func (r *Registry) Names() []string {
 	return res
 }
 
+func (r *Registry) Types() []reflect.Type {
+    var res []reflect.Type
+
+    for t := range r.backward {
+        res = append(res, t)
+    }
+
+    return res
+}
+
 func (r *Registry) sub_registry() *Registry {
 	foreward := make(map[string]reflect.Type)
 	backward := make(map[reflect.Type]string)

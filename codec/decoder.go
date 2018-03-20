@@ -1,9 +1,11 @@
 package codec
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"reflect"
+    "bytes"
 
 	"github.com/DeDiS/protobuf"
 
@@ -11,50 +13,40 @@ import (
 )
 
 type Decoder struct {
-	reader   io.Reader
-	registry *Registry
+	reader io.ReaderAt
 }
 
-func (self *Decoder) Decode() (interface{}, error) {
-	var size_buf [1]byte
+func (self *Decoder) Decode(at int64, val interface{}) (int, error) {
+	var size uint16
 
-	if _, err := self.reader.Read(size_buf[:]); err != nil {
+	buf := make([]byte, binary.Size(size))
+
+	n1, err := self.reader.ReadAt(buf, at)
+	if err != nil {
 		return nil, core.WrapError(err)
 	}
 
-	header_buf := make([]byte, int(size_buf[0]+1))
-	if _, err := self.reader.Read(header_buf); err != nil {
+    if err := binary.Read(bytes.NewReader(buf), binary.BigEndian, &size); err != nil {
+		return nil, core.WrapError(err)
+    }
+
+    at += n1
+    buf := make([]byte, size)
+
+	n2, err := self.reader.ReadAt(buf, at)
+	if err != nil {
 		return nil, core.WrapError(err)
 	}
 
-	var header tEntryHeader
-
-	if err := protobuf.Decode(header_buf, &header); err != nil {
+	if err := protobuf.Decode(buf, val); err != nil {
 		return nil, core.WrapError(err)
 	}
 
-	t, ok := self.registry.foreward[header.Type]
-	if !ok {
-		return nil, core.WrapError(fmt.Errorf("Unknown type with name = `%s`", header.Type))
-	}
-
-	buf := make([]byte, header.Size)
-	if _, err := self.reader.Read(buf); err != nil {
-		return nil, core.WrapError(err)
-	}
-
-	res := reflect.New(t)
-
-	if err := protobuf.Decode(buf, res.Interface()); err != nil {
-		return nil, core.WrapError(err)
-	}
-
-	return res, nil
+	return n1+n2, nil
 }
 
-func MakeDecoder(reader io.Reader, registry *Registry) *Decoder {
+func MakeDecoder(reader io.ReaderAt) *Decoder {
 	return &Decoder{
-		reader:   reader,
-		registry: registry,
+		reader: reader,
 	}
 }

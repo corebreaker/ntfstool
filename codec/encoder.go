@@ -1,6 +1,8 @@
 package codec
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -10,51 +12,35 @@ import (
 )
 
 type Encoder struct {
-	writer   io.Writer
-	registry *Registry
+	writer io.WriterAt
 }
 
-func (self *Encoder) Encode(val interface{}) (int, error) {
-	t := get_value_type(val)
-	name, ok := self.registry.backward[t]
-	if !ok {
-		return 0, core.WrapError(fmt.Errorf("Type `%s` is not registered", t))
-	}
-
+func (self *Encoder) Encode(val interface{}, at int64) (int, error) {
 	buf, err := protobuf.Encode(val)
 	if err != nil {
 		return 0, core.WrapError(err)
 	}
 
-	blen := len(buf)
-	infos := tEntryHeader{
-		Size: uint32(blen),
-		Type: name,
+	var out bytes.Buffer
+
+	if err := binary.Write(&out, binary.BigEndian, uint16(len(buf))); err != nil {
+		return 0, core.WrapError(err)
 	}
 
-	header, err := protobuf.Encode(&infos)
+	if _, err := out.Write(buf); err != nil {
+		return 0, core.WrapError(err)
+	}
+
+	sz, err := self.writer.WriteAt(out.Bytes(), at)
 	if err != nil {
 		return 0, core.WrapError(err)
 	}
 
-	hlen := len(header)
-	out := make([]byte, 1+hlen+blen)
-
-	out[0] = byte(hlen - 1)
-	copy(out[1:(hlen+1)], header)
-	copy(out[(hlen+1):], buf)
-
-	olen, err := self.writer.Write(out)
-	if err != nil {
-		return 0, core.WrapError(err)
-	}
-
-	return olen, nil
+	return sz, nil
 }
 
-func MakeEncoder(writer io.Writer, registry *Registry) *Encoder {
+func MakeEncoder(writer io.WriterAt) *Encoder {
 	return &Encoder{
-		writer:   writer,
-		registry: registry,
+		writer: writer,
 	}
 }
