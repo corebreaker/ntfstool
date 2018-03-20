@@ -1,12 +1,11 @@
 package codec
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 )
 
-func get_value_type(value interface{}) reflect.Type {
+func normalize_value(value interface{}) reflect.Value {
 	val := reflect.ValueOf(value)
 
 loop:
@@ -23,11 +22,15 @@ loop:
 		}
 	}
 
-	return val.Type()
+	return val
+}
+
+func get_value_type(value interface{}) reflect.Type {
+	return normalize_value(value).Type()
 }
 
 func get_registered_name(name string) string {
-	name = strings.Replace(name, "\\", "\\\\")
+	name = strings.Replace(name, "\\", "\\\\", -1)
 	if name[0] == '#' {
 		name = "\\#"
 	}
@@ -44,14 +47,9 @@ func (r *Registry) register_value(name string, value interface{}) {
 	r.register(name, get_value_type(value))
 }
 
-func (r *Registry) register_type(typ reflect.Type) {
-	t := get_value_type(value)
-	r.register_value("#"+t.Name(), t)
-}
-
 func (r *Registry) register(name string, typ reflect.Type) {
 	r.foreward[name] = typ
-	r.backward[t] = name
+	r.backward[typ] = name
 }
 
 func (r *Registry) unregister(name string) {
@@ -74,7 +72,7 @@ func (r *Registry) UnRegisterName(name string) {
 
 func (r *Registry) RegisterValue(value interface{}) {
 	t := get_value_type(value)
-	r.register_value(t.Name(), t)
+	r.register_value("#"+t.Name(), t)
 }
 
 func (r *Registry) UnregisterValue(value interface{}) {
@@ -86,28 +84,6 @@ func (r *Registry) UnregisterValue(value interface{}) {
 
 	delete(r.foreward, name)
 	delete(r.backward, t)
-}
-
-func (r *Registry) Names() []string {
-	var res []string
-
-	for name := range r.foreward {
-		if name[0] != '#' {
-			res = append(res, name)
-		}
-	}
-
-	return res
-}
-
-func (r *Registry) Types() []reflect.Type {
-    var res []reflect.Type
-
-    for t := range r.backward {
-        res = append(res, t)
-    }
-
-    return res
 }
 
 func (r *Registry) sub_registry() *Registry {

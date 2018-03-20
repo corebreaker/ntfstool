@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+    "essai/ntfstool/defs"
 )
 
 const (
@@ -36,7 +38,7 @@ func (*tNullRecord) Print()                  { fmt.Println("{NULL}") }
 type tFileFormat struct {
 	name      string
 	signature []byte
-	headers   []IDataRecord
+	headers   []defs.IDataRecord
 }
 
 func (self *tFileFormat) String() string {
@@ -48,7 +50,7 @@ var (
 	file_signatures map[string]*tFileFormat = make(map[string]*tFileFormat)
 )
 
-func RegisterFileFormat(name, signature string, headers ...IDataRecord) {
+func RegisterFileFormat(name, signature string, headers ...defs.IDataRecord) {
 	var common_headers []IDataRecord
 
 	if name != COMMON_DATA_FILEFORMAT_NAME {
