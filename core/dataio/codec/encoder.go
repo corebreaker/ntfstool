@@ -12,11 +12,11 @@ import (
 )
 
 type Encoder struct {
-	writer   io.WriterAt
+	writer   io.Writer
 	registry *Registry
 }
 
-func (self *Encoder) Encode(val interface{}, at int64) (int, error) {
+func (self *Encoder) Encode(val interface{}) (int, error) {
 	v := normalize_value(val)
 	if v.Kind() != reflect.Struct {
 		return 0, core.WrapError(fmt.Errorf("Value should have a struct type"))
@@ -56,7 +56,7 @@ func (self *Encoder) Encode(val interface{}, at int64) (int, error) {
 		return 0, core.WrapError(err)
 	}
 
-	sz, err := self.writer.WriteAt(out.Bytes(), at)
+	sz, err := self.writer.Write(out.Bytes())
 	if err != nil {
 		return 0, core.WrapError(err)
 	}
@@ -64,7 +64,7 @@ func (self *Encoder) Encode(val interface{}, at int64) (int, error) {
 	return sz, nil
 }
 
-func MakeEncoder(writer io.WriterAt, registry *Registry) *Encoder {
+func MakeEncoder(writer io.Writer, registry *Registry) *Encoder {
 	return &Encoder{
 		writer:   writer,
 		registry: registry.sub_registry(),

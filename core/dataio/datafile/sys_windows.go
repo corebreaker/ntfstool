@@ -4,7 +4,6 @@ package datafile
 
 import (
 	"os"
-	//"syscall"
 )
 
 type tSysErr string
@@ -12,6 +11,10 @@ type tSysErr string
 func (self tSysErr) Error() string { return self }
 
 func DupFile(f *os.File) (*os.File, error) {
-	//syscall.DuplicateHandle()
-	return nil, WrapError(tSysErr("DupFile not implemented"))
+	res, err := os.Open(f.Name())
+	if err != nil {
+		return nil, WrapError(err)
+	}
+
+	return res, nil
 }
