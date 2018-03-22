@@ -3,7 +3,6 @@ package datafile
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 	"os"
 
 	"essai/ntfstool/core"
@@ -17,11 +16,10 @@ type DataWriter struct {
 	writer *codec.Encoder
 }
 
-func (self *DataWriter) write_record(rec IDataRecord) error {
-	res := make([]IDataRecord, 1, 1)
-	res[0] = rec
+func (self *DataWriter) write_record(rec dataio.IDataRecord) error {
+	_, err := self.writer.Encode(rec)
 
-	return WrapError(self.writer.Encode(res))
+	return err
 }
 
 func (self *DataWriter) Close() (err error) {
@@ -33,7 +31,7 @@ func (self *DataWriter) Close() (err error) {
 		if self.file != nil {
 			res_err := self.file.Close()
 			if err == nil {
-				err = WrapError(res_err)
+				err = core.WrapError(res_err)
 			}
 		}
 
@@ -56,25 +54,25 @@ func (self *DataWriter) Close() (err error) {
 		return err
 	}
 
-	if err := self.writer.Encode(self.infos.count); err != nil {
-		return WrapError(err)
+	if _, err := self.writer.Encode(self.infos.count); err != nil {
+		return core.WrapError(err)
 	}
 
-	if err := self.writer.Encode(self.infos.headers); err != nil {
-		return WrapError(err)
+	if _, err := self.writer.Encode(self.infos.headers); err != nil {
+		return core.WrapError(err)
 	}
 
-	if err := self.writer.Encode(self.infos.indexes); err != nil {
-		return WrapError(err)
+	if _, err := self.writer.Encode(self.infos.indexes); err != nil {
+		return core.WrapError(err)
 	}
 
-	return WrapError(binary.Write(self.file, binary.BigEndian, pos))
+	return core.WrapError(binary.Write(self.file, binary.BigEndian, pos))
 }
 
-func (self *DataWriter) Write(rec IDataRecord) (err error) {
+func (self *DataWriter) Write(rec dataio.IDataRecord) (err error) {
 	defer func() {
 		if err == nil {
-			err = Recover()
+			err = core.Recover()
 		}
 
 		if err == nil {
@@ -97,7 +95,7 @@ func (self *DataWriter) Write(rec IDataRecord) (err error) {
 }
 
 func OpenDataWriter(filename, format_name string) (*DataWriter, error) {
-	f, err := core.OpenFile(filename, OPEN_WRONLY)
+	f, err := core.OpenFile(filename, core.OPEN_WRONLY)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +111,7 @@ func OpenDataWriter(filename, format_name string) (*DataWriter, error) {
 func MakeDataWriter(file *os.File, format_name string) (*DataWriter, error) {
 	format, ok := file_formats[format_name]
 	if !ok {
-		return nil, WrapError(fmt.Errorf("Unknown file format: %s", format_name))
+		return nil, core.WrapError(fmt.Errorf("Unknown file format: %s", format_name))
 	}
 
 	res := &DataWriter{
@@ -125,7 +123,7 @@ func MakeDataWriter(file *os.File, format_name string) (*DataWriter, error) {
 	}
 
 	if _, err := file.Write(format.signature); err != nil {
-		return nil, WrapError(err)
+		return nil, core.WrapError(err)
 	}
 
 	old_pos, err := res.get_pos()

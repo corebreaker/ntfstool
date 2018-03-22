@@ -19,7 +19,7 @@ type Encoder struct {
 func (self *Encoder) Encode(val interface{}) (int, error) {
 	v := normalize_value(val)
 	if v.Kind() != reflect.Struct {
-		return 0, core.WrapError(fmt.Errorf("Value should have a struct type"))
+		return 0, core.WrapError(fmt.Errorf("Value with type `%s` should have a struct type", v.Type()))
 	}
 
 	t, ok := self.registry.backward[v.Type()]
@@ -27,9 +27,18 @@ func (self *Encoder) Encode(val interface{}) (int, error) {
 		return 0, core.WrapError(fmt.Errorf("Type `%s` is not registered", v.Type()))
 	}
 
-	valbuf, err := protobuf.Encode(v.Interface())
+	var to_encode reflect.Value
+
+	if v.CanAddr() {
+		to_encode = v.Addr()
+	} else {
+		to_encode = reflect.New(v.Type())
+		to_encode.Elem().Set(v)
+	}
+
+	valbuf, err := protobuf.Encode(to_encode.Interface())
 	if err != nil {
-		return 0, core.WrapError(err)
+		return 0, core.AddErrorInfo(core.WrapError(err), "for value with type: `%s`", v.Type())
 	}
 
 	header := &tEntryHeader{
@@ -67,6 +76,6 @@ func (self *Encoder) Encode(val interface{}) (int, error) {
 func MakeEncoder(writer io.Writer, registry *Registry) *Encoder {
 	return &Encoder{
 		writer:   writer,
-		registry: registry.sub_registry(),
+		registry: registry.SubRegistry(),
 	}
 }

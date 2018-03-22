@@ -86,7 +86,7 @@ func (r *Registry) UnregisterValue(value interface{}) {
 	delete(r.backward, t)
 }
 
-func (r *Registry) sub_registry() *Registry {
+func (r *Registry) SubRegistry() *Registry {
 	foreward := make(map[string]reflect.Type)
 	backward := make(map[reflect.Type]string)
 

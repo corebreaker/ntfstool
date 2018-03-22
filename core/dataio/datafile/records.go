@@ -1,5 +1,7 @@
 package datafile
 
+import "fmt"
+
 type BaseDataRecord struct{}
 
 func (*BaseDataRecord) IsNull() bool            { return false }

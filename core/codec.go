@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
-    "essai/ntfstool/core/dataio"
+	"essai/ntfstool/core/dataio"
 )
 
 type IEncoder interface {

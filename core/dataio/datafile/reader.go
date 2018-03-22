@@ -8,6 +8,7 @@ import (
 
 	"essai/ntfstool/core"
 	"essai/ntfstool/core/dataio"
+	"essai/ntfstool/core/dataio/buffer"
 	"essai/ntfstool/core/dataio/codec"
 )
 
@@ -15,6 +16,7 @@ type DataReader struct {
 	tDataContainer
 
 	positions map[int64]*tIndex
+	buffer    *buffer.Buffer
 }
 
 func (self *DataReader) Close() error {
@@ -74,10 +76,11 @@ func (self *DataReader) InitStream(stream dataio.IDataStream) error {
 	}
 
 	reader := codec.MakeDecoder(self.file, self.format.registry)
+	decoder := reader.ToCoreDecoder()
 
 	for _ = range self.infos.headers {
-		if _, err := ReadRecord(reader); err != nil {
-			return WrapError(err)
+		if _, err := core.ReadRecord(decoder); err != nil {
+			return core.WrapError(err)
 		}
 	}
 
@@ -93,10 +96,10 @@ func (self *DataReader) InitStream(stream dataio.IDataStream) error {
 	}
 
 	go func() {
-		defer DeferedCall(close_stream)
+		defer core.DeferedCall(close_stream)
 
 		for {
-			record, err := core.ReadRecord(reader)
+			record, err := core.ReadRecord(decoder)
 			if err != nil {
 				if err != io.EOF {
 					stream.SendError(err)
@@ -115,7 +118,7 @@ func (self *DataReader) InitStream(stream dataio.IDataStream) error {
 }
 
 func OpenDataReader(filename, format_name string) (*DataReader, error) {
-	f, err := core.OpenFile(filename, OPEN_RDONLY)
+	f, err := core.OpenFile(filename, core.OPEN_RDONLY)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +159,7 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 
 	default:
 		if string(signature) != string(format.signature) {
-			return nil, WrapError(fmt.Errorf("Bad file format"))
+			return nil, core.WrapError(fmt.Errorf("Bad file format"))
 		}
 	}
 
@@ -184,15 +187,15 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 		positions: make(map[int64]*tIndex),
 	}
 
-	if err := reader.Decode(&res.infos.count); err != nil {
+	if _, err := reader.Decode(&res.infos.count); err != nil {
 		return nil, core.WrapError(err)
 	}
 
-	if err := reader.Decode(&res.infos.headers); err != nil {
+	if _, err := reader.Decode(&res.infos.headers); err != nil {
 		return nil, core.WrapError(err)
 	}
 
-	if err := reader.Decode(&res.infos.indexes); err != nil {
+	if _, err := reader.Decode(&res.infos.indexes); err != nil {
 		return nil, core.WrapError(err)
 	}
 
@@ -243,7 +246,7 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 		prev.length = length
 	}
 
-	res.buffer = MakeBuffer(int(max_len))
+	res.buffer = buffer.MakeBuffer(int(max_len), res.format.registry)
 
 	for _, l := range res.infos.headers {
 		length := int64(l)

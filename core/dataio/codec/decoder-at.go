@@ -10,30 +10,12 @@ import (
 	"essai/ntfstool/core"
 )
 
-type tDecoder struct {
-	dec *Decoder
-}
-
-func (self *tDecoder) Decode() (interface{}, error) {
-	var res interface{}
-
-	if _, err := self.dec.Decode(&res); err != nil {
-		return nil, err
-	}
-
-	return res, nil
-}
-
-type Decoder struct {
-	reader   io.Reader
+type DecoderAt struct {
+	reader   io.ReaderAt
 	registry *Registry
 }
 
-func (self *Decoder) ToCoreDecoder() core.IDecoder {
-	return &tDecoder{self}
-}
-
-func (self *Decoder) Decode(val interface{}) (int, error) {
+func (dec_at *DecoderAt) DecodeAt(at int64, val interface{}) (int, error) {
 	v := reflect.ValueOf(val)
 	if v.Kind() != reflect.Ptr {
 		return 0, core.WrapError(fmt.Errorf("value must be a pointer"))
@@ -41,14 +23,15 @@ func (self *Decoder) Decode(val interface{}) (int, error) {
 
 	var szbuf [1]byte
 
-	n1, err := self.reader.Read(szbuf[:])
+	n1, err := dec_at.reader.ReadAt(szbuf[:], at)
 	if err != nil {
 		return 0, core.WrapError(err)
 	}
 
+	at += int64(n1)
 	headbuf := make([]byte, szbuf[0])
 
-	n2, err := self.reader.Read(headbuf)
+	n2, err := dec_at.reader.ReadAt(headbuf, at)
 	if err != nil {
 		return 0, core.WrapError(err)
 	}
@@ -59,14 +42,15 @@ func (self *Decoder) Decode(val interface{}) (int, error) {
 		return 0, core.WrapError(err)
 	}
 
+	at += int64(n2)
 	valbuf := make([]byte, header.Size)
 
-	t, ok := self.registry.foreward[header.Type]
+	t, ok := dec_at.registry.foreward[header.Type]
 	if !ok {
 		return 0, core.WrapError(fmt.Errorf("Unknown decoded type: `%s`", header.Type))
 	}
 
-	n3, err := self.reader.Read(valbuf)
+	n3, err := dec_at.reader.ReadAt(valbuf, at)
 	if err != nil {
 		return 0, core.WrapError(err)
 	}
@@ -102,8 +86,8 @@ func (self *Decoder) Decode(val interface{}) (int, error) {
 	return n1 + n2 + n3, nil
 }
 
-func MakeDecoder(reader io.Reader, registry *Registry) *Decoder {
-	return &Decoder{
+func MakeDecoderAt(reader io.ReaderAt, registry *Registry) *DecoderAt {
+	return &DecoderAt{
 		reader:   reader,
 		registry: registry.SubRegistry(),
 	}
