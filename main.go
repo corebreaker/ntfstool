@@ -1,66 +1,67 @@
 package main
 
 import (
-    "fmt"
-    "os"
-    "path/filepath"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 
-    ntfs "essai/ntfstool/core"
-    "essai/ntfstool/inspect"
+	ntfs "essai/ntfstool/core"
+	"essai/ntfstool/inspect"
 )
 
 type tActionType byte
 
 const (
-    _ACT_CONFIG tActionType = iota
-    _ACT_DEFAULT
-    _ACT_BOOLEAN
-    _ACT_STRING
-    _ACT_INTEGER
-    _ACT_INDEX
+	_ACT_CONFIG tActionType = iota
+	_ACT_DEFAULT
+	_ACT_BOOLEAN
+	_ACT_STRING
+	_ACT_INTEGER
+	_ACT_INDEX
 )
 
 type tActionArg struct {
-    partition string
-    disk      *inspect.NtfsDisk
-    source    *os.File
-    dest      *os.File
-    _args     ntfs.Args
+	partition string
+	disk      *inspect.NtfsDisk
+	source    *os.File
+	dest      *os.File
+	_args     ntfs.Args
 }
 
 func (self *tActionArg) Close() error {
-    if self.disk != nil {
-        self.disk.Close()
-    }
+	if self.disk != nil {
+		self.disk.Close()
+	}
 
-    if self.source != nil {
-        self.source.Close()
-    }
+	if self.source != nil {
+		self.source.Close()
+	}
 
-    if self.dest != nil {
-        self.dest.Close()
-    }
+	if self.dest != nil {
+		self.dest.Close()
+	}
 
-    return nil
+	return nil
 }
 
 func (self *tActionArg) Get(key string) string {
-    return self._args[key]
+	return self._args[key]
 }
 
 func (self *tActionArg) GetDef(key, default_value string) string {
-    res, ok := self._args[key]
-    if !ok {
-        res = default_value
-    }
+	res, ok := self._args[key]
+	if !ok {
+		res = default_value
+	}
 
-    return res
+	return res
 }
 
 func (self *tActionArg) GetExt(key string) (string, bool) {
-    res, ok := self._args[key]
+	res, ok := self._args[key]
 
-    return res, ok
+	return res, ok
 }
 
 func (self *tActionArg) Bool(key string) bool                    { return self._args.Bool(key) }
@@ -77,48 +78,48 @@ func (self *tActionArg) IdxExt(key string) (int64, bool)         { return self._
 func (self *tActionArg) IdxFull(key string) (int64, bool, error) { return self._args.IdxFull(key) }
 
 func (self *tActionArg) GetInput() (*os.File, error) {
-    if self.source == nil {
-        return nil, ntfs.WrapError(fmt.Errorf("No source file specified"))
-    }
+	if self.source == nil {
+		return nil, ntfs.WrapError(fmt.Errorf("No source file specified"))
+	}
 
-    return self.source, nil
+	return self.source, nil
 }
 
 func (self *tActionArg) GetFiles() (src, dest *os.File, err error) {
-    src, err = self.GetInput()
-    if err == nil {
-        dest = self.dest
-        if dest == nil {
-            dest, err = ntfs.OpenFile(filepath.Join(filepath.Dir(self.source.Name()), "records.dat"), ntfs.OPEN_WRONLY)
-            if err != nil {
-                return nil, nil, err
-            }
-        }
-    }
+	src, err = self.GetInput()
+	if err == nil {
+		dest = self.dest
+		if dest == nil {
+			dest, err = ntfs.OpenFile(filepath.Join(filepath.Dir(self.source.Name()), "records.dat"), ntfs.OPEN_WRONLY)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+	}
 
-    return
+	return
 }
 
 func (self *tActionArg) GetTransferFiles() (*os.File, string, error) {
-    src, err := self.GetInput()
-    if err != nil {
-        return nil, "", err
-    }
+	src, err := self.GetInput()
+	if err != nil {
+		return nil, "", err
+	}
 
-    return src, self.GetDef("to", "."), nil
+	return src, self.GetDef("to", "."), nil
 }
 
 type iActionDef interface {
-    get_name() string
-    handle_str(value string, arg *tActionArg) error
-    handle_int(value int64, arg *tActionArg) error
-    handle_bool(value bool, arg *tActionArg) error
-    action_type() tActionType
-    do_stop() bool
+	get_name() string
+	handle_str(value string, arg *tActionArg) error
+	handle_int(value int64, arg *tActionArg) error
+	handle_bool(value bool, arg *tActionArg) error
+	action_type() tActionType
+	do_stop() bool
 }
 
 type tConfigActionDef struct {
-    handler func(*tActionArg) error
+	handler func(*tActionArg) error
 }
 
 func (self tConfigActionDef) get_name() string                         { return "" }
@@ -129,9 +130,9 @@ func (self tConfigActionDef) handle_str(v string, a *tActionArg) error { return 
 func (self tConfigActionDef) handle_bool(v bool, a *tActionArg) error  { return self.handler(a) }
 
 type tDefaultActionDef struct {
-    handler func(*tActionArg) error
-    name    string
-    next    bool
+	handler func(*tActionArg) error
+	name    string
+	next    bool
 }
 
 func (self tDefaultActionDef) get_name() string                         { return self.name }
@@ -142,9 +143,9 @@ func (self tDefaultActionDef) handle_str(v string, a *tActionArg) error { return
 func (self tDefaultActionDef) handle_bool(v bool, a *tActionArg) error  { return self.handler(a) }
 
 type tBoolActionDef struct {
-    handler func(bool, *tActionArg) error
-    name    string
-    next    bool
+	handler func(bool, *tActionArg) error
+	name    string
+	next    bool
 }
 
 func (self tBoolActionDef) get_name() string                         { return self.name }
@@ -155,9 +156,9 @@ func (self tBoolActionDef) handle_str(v string, a *tActionArg) error { return ni
 func (self tBoolActionDef) handle_bool(v bool, a *tActionArg) error  { return self.handler(v, a) }
 
 type tStringActionDef struct {
-    handler func(string, *tActionArg) error
-    name    string
-    next    bool
+	handler func(string, *tActionArg) error
+	name    string
+	next    bool
 }
 
 func (self tStringActionDef) get_name() string                         { return self.name }
@@ -168,10 +169,10 @@ func (self tStringActionDef) handle_str(v string, a *tActionArg) error { return 
 func (self tStringActionDef) handle_bool(v bool, a *tActionArg) error  { return nil }
 
 type tIntegerActionDef struct {
-    handler func(int64, *tActionArg) error
-    name    string
-    next    bool
-    index   bool
+	handler func(int64, *tActionArg) error
+	name    string
+	next    bool
+	index   bool
 }
 
 func (self tIntegerActionDef) get_name() string                         { return self.name }
@@ -180,115 +181,122 @@ func (self tIntegerActionDef) handle_int(v int64, a *tActionArg) error  { return
 func (self tIntegerActionDef) handle_str(v string, a *tActionArg) error { return nil }
 func (self tIntegerActionDef) handle_bool(v bool, a *tActionArg) error  { return nil }
 func (self tIntegerActionDef) action_type() tActionType {
-    if self.index {
-        return _ACT_INDEX
-    }
+	if self.index {
+		return _ACT_INDEX
+	}
 
-    return _ACT_INTEGER
+	return _ACT_INTEGER
 }
 
 func run_action(action iActionDef, arg *tActionArg) (bool, error) {
-    var err error
+	var err error
 
-    name := action.get_name()
+	name := action.get_name()
 
-    switch action.action_type() {
-    case _ACT_CONFIG:
-        err = action.handle_int(0, arg)
+	switch action.action_type() {
+	case _ACT_CONFIG:
+		err = action.handle_int(0, arg)
 
-    case _ACT_BOOLEAN:
-        value, ok, i_err := arg.BoolFull(name)
-        if i_err != nil {
-            return false, i_err
-        }
+	case _ACT_BOOLEAN:
+		value, ok, i_err := arg.BoolFull(name)
+		if i_err != nil {
+			return false, i_err
+		}
 
-        if !ok {
-            return false, nil
-        }
+		if !ok {
+			return false, nil
+		}
 
-        err = action.handle_bool(value, arg)
+		err = action.handle_bool(value, arg)
 
-    case _ACT_STRING:
-        value, ok := arg.GetExt(name)
-        if !ok {
-            return false, nil
-        }
+	case _ACT_STRING:
+		value, ok := arg.GetExt(name)
+		if !ok {
+			return false, nil
+		}
 
-        err = action.handle_str(value, arg)
+		err = action.handle_str(value, arg)
 
-    case _ACT_INTEGER:
-        value, ok, i_err := arg.IntFull(name)
-        if i_err != nil {
-            return false, i_err
-        }
+	case _ACT_INTEGER:
+		value, ok, i_err := arg.IntFull(name)
+		if i_err != nil {
+			return false, i_err
+		}
 
-        if !ok {
-            return false, nil
-        }
+		if !ok {
+			return false, nil
+		}
 
-        err = action.handle_int(value, arg)
+		err = action.handle_int(value, arg)
 
-    case _ACT_INDEX:
-        value, ok, i_err := arg.IdxFull(name)
-        if err != nil {
-            return false, i_err
-        }
+	case _ACT_INDEX:
+		value, ok, i_err := arg.IdxFull(name)
+		if err != nil {
+			return false, i_err
+		}
 
-        if !ok {
-            return false, nil
-        }
+		if !ok {
+			return false, nil
+		}
 
-        err = action.handle_int(value, arg)
+		err = action.handle_int(value, arg)
 
-    case _ACT_DEFAULT:
-        if _, ok := arg.GetExt(name); !ok {
-            return false, nil
-        }
+	case _ACT_DEFAULT:
+		if _, ok := arg.GetExt(name); !ok {
+			return false, nil
+		}
 
-        err = action.handle_int(0, arg)
-    }
+		err = action.handle_int(0, arg)
+	}
 
-    if err != nil {
-        return false, err
-    }
+	if err != nil {
+		return false, err
+	}
 
-    return action.do_stop(), nil
+	return action.do_stop(), nil
 }
 
 func work() error {
-    if len(os.Args) <= 1 {
-        return nil
-    }
+	if len(os.Args) <= 1 {
+		return nil
+	}
 
-    part := ntfs.GetPartition()
-    fmt.Println(fmt.Sprintf("Part: [%s]", part))
-    if len(os.Args) <= 2 {
-        ntfs.PrintBoot(part)
+	cpu_count := (runtime.NumCPU() + 1) / 2
+	if cpu_count == 0 {
+		cpu_count++
+	}
 
-        return nil
-    }
+	runtime.GOMAXPROCS(cpu_count)
 
-    action_arg := &tActionArg{
-        partition: part,
-        _args:     ntfs.GetArgs(),
-    }
+	part := ntfs.GetPartition()
+	fmt.Println(fmt.Sprintf("Part: [%s]", part))
+	if len(os.Args) <= 2 {
+		ntfs.PrintBoot(part)
 
-    defer ntfs.DeferedCall(action_arg.Close)
+		return nil
+	}
 
-    for _, action := range actions {
-        ret, err := run_action(action, action_arg)
-        if err != nil {
-            return err
-        }
+	action_arg := &tActionArg{
+		partition: part,
+		_args:     ntfs.GetArgs(),
+	}
 
-        if ret {
-            return nil
-        }
-    }
+	defer ntfs.DeferedCall(action_arg.Close)
 
-    return nil
+	for _, action := range actions {
+		ret, err := run_action(action, action_arg)
+		if err != nil {
+			return err
+		}
+
+		if ret {
+			return nil
+		}
+	}
+
+	return nil
 }
 
 func main() {
-    ntfs.CheckedMain(work)
+	ntfs.CheckedMain(work)
 }
