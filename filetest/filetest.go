@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -74,7 +75,7 @@ func (self *Buffer) Reset() {
 func (self *Buffer) Decode() (interface{}, error) {
 	var res interface{}
 
-	_, err := self.reader.Decode(res)
+	_, err := self.reader.Decode(&res)
 
 	return res, err
 }
@@ -104,11 +105,13 @@ func (self *tRecord) GetPosition() int64      { return int64(self.I) }
 func (self *tRecord) GetEncodingCode() string { return "VAL" }
 func (self *tRecord) Print()                  { fmt.Println(self) }
 
-type tStream bool
+type tStream struct {
+	cancel context.CancelFunc
+}
 
-func (tStream) Close() error                      { fmt.Println("End"); return nil }
-func (tStream) SendRecord(rec dataio.IDataRecord) { rec.Print() }
-func (tStream) SendError(err error)               { panic(err) }
+func (s *tStream) Close() error                    { fmt.Println("End"); s.cancel(); return nil }
+func (*tStream) SendRecord(rec dataio.IDataRecord) { rec.Print() }
+func (*tStream) SendError(err error)               { panic(err) }
 
 func work() error {
 	datafile.RegisterFileFormat("Example", "[-- EXAMPLE --]", new(tRecord))
@@ -219,12 +222,16 @@ func work() error {
 
 		defer f.Close()
 
-		fmt.Println("Count=", f.GetCount())
+		fmt.Println("Count=", f.GetCount(), "- At:", *index)
 		if *index < 0 {
+			ctx, cancel := context.WithCancel(context.Background())
+
 			fmt.Println("List:")
-			if err := f.InitStream(tStream(true)); err != nil {
+			if err := f.InitStream(&tStream{cancel}); err != nil {
 				return err
 			}
+
+			<-ctx.Done()
 
 			return nil
 		}
@@ -244,7 +251,7 @@ func work() error {
 		return err
 	}
 
-	defer f.Close()
+	defer core.DeferedCall(f.Close)
 
 	for _, v := range flag.Args() {
 		val, err := strconv.Atoi(v)

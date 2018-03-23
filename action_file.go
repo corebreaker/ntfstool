@@ -1,282 +1,319 @@
 package main
 
 import (
-    "fmt"
-    "os"
-    "sort"
-    "syscall"
+	"fmt"
+	"os"
+	"sort"
+	"syscall"
 
-    ntfs "essai/ntfstool/core"
+	ntfs "essai/ntfstool/core"
 )
 
 func do_file(file int64, arg *tActionArg) error {
-    var record ntfs.FileRecord
+	var record ntfs.FileRecord
 
-    if err := arg.disk.ReadFileRecord(file, &record); err != nil {
-        return err
-    }
+	if err := arg.disk.ReadFileRecord(file, &record); err != nil {
+		return err
+	}
 
-    fmt.Println()
-    fmt.Println("Record:")
-    ntfs.PrintStruct(record)
+	fmt.Println()
+	fmt.Println("Record:")
+	ntfs.PrintStruct(record)
 
-    fmt.Println("Good record:", record.Type.IsGood())
+	fmt.Println("Good record:", record.Type.IsGood())
 
-    if record.Type != ntfs.RECTYP_FILE {
-        return nil
-    }
+	if record.Type != ntfs.RECTYP_FILE {
+		return nil
+	}
 
-    _, ok := arg.GetExt("raw")
-    if ok {
-        return nil
-    }
+	_, ok := arg.GetExt("raw")
+	if ok {
+		return nil
+	}
 
-    attributes, err := record.GetAttributes(false)
-    if err != nil {
-        return err
-    }
+	attributes, err := record.GetAttributes(false)
+	if err != nil {
+		return err
+	}
 
-    _, ok = arg.GetExt("name")
-    if ok {
-        for _, attr := range attributes {
-            if attr.AttributeType == ntfs.ATTR_FILE_NAME {
-                desc, err := record.MakeAttributeFromHeader(attr)
-                if err != nil {
-                    return err
-                }
+	_, ok = arg.GetExt("name")
+	if ok {
+		for _, attr := range attributes {
+			if attr.AttributeType == ntfs.ATTR_FILE_NAME {
+				desc, err := record.MakeAttributeFromHeader(attr)
+				if err != nil {
+					return err
+				}
 
-                val, err := arg.disk.GetAttributeValue(desc, true)
-                if err != nil {
-                    return err
-                }
+				val, err := arg.disk.GetAttributeValue(desc, true)
+				if err != nil {
+					return err
+				}
 
-                fmt.Println()
-                fmt.Println("Filename:", val.GetFilename())
-            }
-        }
-    }
+				fmt.Println()
+				fmt.Println("Filename:", val.GetFilename())
+			}
+		}
+	}
 
-    index, ok := arg.IntExt("index")
-    if ok {
-        attr, ok := attributes[int(index)]
-        if !ok {
-            fmt.Println("Attribute", index, "not found")
+	index, ok := arg.IntExt("index")
+	if ok {
+		attr, ok := attributes[int(index)]
+		if !ok {
+			fmt.Println("Attribute", index, "not found")
 
-            return nil
-        }
+			return nil
+		}
 
-        switch attr.AttributeType {
-        case ntfs.ATTR_INDEX_ROOT, ntfs.ATTR_INDEX_ALLOCATION:
-        default:
-            fmt.Println("Attribute", index, "is not an index")
+		switch attr.AttributeType {
+		case ntfs.ATTR_INDEX_ROOT, ntfs.ATTR_INDEX_ALLOCATION:
+		default:
+			fmt.Println("Attribute", index, "is not an index")
 
-            return nil
-        }
+			return nil
+		}
 
-        desc, err := record.MakeAttributeFromHeader(attr)
-        if err != nil {
-            return err
-        }
+		desc, err := record.MakeAttributeFromHeader(attr)
+		if err != nil {
+			return err
+		}
 
-        fmt.Println()
-        fmt.Println("Attribute:")
-        ntfs.PrintStruct(desc.Desc)
-        if desc.Name != "" {
-            fmt.Println("   Name:", desc.Name)
-        }
+		entry_idx, ok := arg.IntExt("block")
+		if ok {
+			_, noread := arg.GetExt("noread")
 
-        val, err := arg.disk.GetAttributeValue(desc, true)
-        if err != nil {
-            return err
-        }
+			val, err := arg.disk.GetAttributeValue(desc, !noread)
+			if err != nil {
+				return err
+			}
 
-        fmt.Println()
-        fmt.Println("Index Content:")
+			entry, err := val.GetFirstEntry()
+			if err != nil {
+				return err
+			}
 
-        next_entry, err := val.GetFirstEntry()
-        if err != nil {
-            return err
-        }
+			for i := int64(0); i < entry_idx; i++ {
+				entry, err = val.GetNextEntry(entry)
+				if err != nil {
+					return err
+				}
+			}
 
-        for i := 0; next_entry != nil; i++ {
-            entry := next_entry
-            next_entry, err = val.GetNextEntry(entry)
-            if err != nil {
-                return err
-            }
+			fmt.Println()
+			fmt.Println("Entry:")
+			ntfs.PrintStruct(entry.DirectoryEntryExtendedHeader)
 
-            if entry.FileReferenceNumber == 0 {
-                fmt.Println(fmt.Sprintf("  - %d : [%v] {%s}", i, entry.FileReferenceNumber, entry.Name))
+			block, err := val.GetIndexBlockFromEntry(entry)
+			if err != nil {
+				return err
+			}
 
-                continue
-            }
+			fmt.Println()
+			fmt.Println("Block:")
+			ntfs.PrintStruct(block)
 
-            var file_rec ntfs.FileRecord
+			return nil
+		}
 
-            if err := arg.disk.ReadFileRecordFromRef(entry.FileReferenceNumber, &file_rec); err != nil {
-                if ntfs.IsEof(err) {
-                    fmt.Println(fmt.Sprintf("  - %d : [%v] {%s}", i, entry.FileReferenceNumber, entry.Name))
+		fmt.Println()
+		fmt.Println("Attribute:")
+		ntfs.PrintStruct(desc.Desc)
+		if desc.Name != "" {
+			fmt.Println("   Name:", desc.Name)
+		}
 
-                    continue
-                }
+		val, err := arg.disk.GetAttributeValue(desc, true)
+		if err != nil {
+			return err
+		}
 
-                return err
-            }
+		fmt.Println()
+		fmt.Println("Index Content:")
 
-            name, err := arg.disk.GetFileRecordFilename(&file_rec)
-            if err != nil {
-                return err
-            }
+		next_entry, err := val.GetFirstEntry()
+		if err != nil {
+			return err
+		}
 
-            fmt.Println(fmt.Sprintf("  - %d : %s [%v] {%s}", i, name, entry.FileReferenceNumber, entry.Name))
-        }
+		for i := 0; next_entry != nil; i++ {
+			entry := next_entry
+			next_entry, err = val.GetNextEntry(entry)
+			if err != nil {
+				return err
+			}
 
-        return nil
-    }
+			if entry.FileReferenceNumber == 0 {
+				fmt.Println(fmt.Sprintf("  - %d : [%v] {%s}", i, entry.FileReferenceNumber, entry.Name))
 
-    attr_num, ok := arg.IntExt("attribute")
-    if ok {
-        attr, ok := attributes[int(attr_num)]
-        if !ok {
-            fmt.Println("Attribute", attr_num, "not found")
+				continue
+			}
 
-            return nil
-        }
+			var file_rec ntfs.FileRecord
 
-        desc, err := record.MakeAttributeFromHeader(attr)
-        if err != nil {
-            return err
-        }
+			if err := arg.disk.ReadFileRecordFromRef(entry.FileReferenceNumber, &file_rec); err != nil {
+				if ntfs.IsEof(err) {
+					fmt.Println(fmt.Sprintf("  - %d : [%v] {%s}", i, entry.FileReferenceNumber, entry.Name))
 
-        fmt.Println()
-        fmt.Println("Attribute:")
-        ntfs.PrintStruct(desc.Desc)
-        if desc.Name != "" {
-            fmt.Println("   Name:", desc.Name)
-        }
+					continue
+				}
 
-        _, noread := arg.GetExt("noread")
-        _, ask_runlist := arg.GetExt("runlist")
+				return err
+			}
 
-        val, err := arg.disk.GetAttributeValue(desc, !(noread || ask_runlist))
-        if err != nil {
-            return err
-        }
+			name, err := arg.disk.GetFileRecordFilename(&file_rec)
+			if err != nil {
+				return err
+			}
 
-        fmt.Println()
-        fmt.Println(fmt.Sprintf("Value (size=%d):", val.Size))
-        ntfs.PrintStruct(val.Value)
-        fmt.Println("   First LCN:", val.FirstLCN)
+			fmt.Println(fmt.Sprintf("  - %d : %s [%v] {%s}", i, name, entry.FileReferenceNumber, entry.Name))
+		}
 
-        if ask_runlist {
-            fmt.Println()
-            fmt.Println("Run list:")
-            for _, entry := range desc.GetRunList() {
-                fmt.Println("  -", entry)
-            }
+		return nil
+	}
 
-            return nil
-        }
+	attr_num, ok := arg.IntExt("attribute")
+	if ok {
+		attr, ok := attributes[int(attr_num)]
+		if !ok {
+			fmt.Println("Attribute", attr_num, "not found")
 
-        entry_idx, ok := arg.IntExt("block")
-        if ok {
-            entry, err := val.GetFirstEntry()
-            if err != nil {
-                return err
-            }
+			return nil
+		}
 
-            for i := int64(0); i < entry_idx; i++ {
-                entry, err = val.GetNextEntry(entry)
-                if err != nil {
-                    return err
-                }
-            }
+		desc, err := record.MakeAttributeFromHeader(attr)
+		if err != nil {
+			return err
+		}
 
-            fmt.Println()
-            fmt.Println("Entry:")
-            ntfs.PrintStruct(entry.DirectoryEntryExtendedHeader)
+		fmt.Println()
+		fmt.Println("Attribute:")
+		ntfs.PrintStruct(desc.Desc)
+		if desc.Name != "" {
+			fmt.Println("   Name:", desc.Name)
+		}
 
-            block, err := val.GetIndexBlockFromEntry(entry)
-            if err != nil {
-                return err
-            }
+		_, noread := arg.GetExt("noread")
+		_, ask_runlist := arg.GetExt("runlist")
 
-            fmt.Println()
-            fmt.Println("Block:")
-            ntfs.PrintStruct(block)
+		val, err := arg.disk.GetAttributeValue(desc, !(noread || ask_runlist))
+		if err != nil {
+			return err
+		}
 
-            return nil
-        }
+		fmt.Println()
+		fmt.Println(fmt.Sprintf("Value (size=%d):", val.Size))
+		ntfs.PrintStruct(val.Value)
+		fmt.Println("   First LCN:", val.FirstLCN)
 
-        save, ok := arg.GetExt("save")
-        if ok {
-            _, err := os.Stat(save)
-            switch err {
-            case os.ErrExist, os.ErrNotExist, nil:
-            default:
-                _, ok := err.(*os.PathError)
-                if !ok {
-                    return ntfs.WrapError(err)
-                }
-            }
+		if ask_runlist {
+			fmt.Println()
+			fmt.Println("Run list:")
+			for _, entry := range desc.GetRunList() {
+				fmt.Println("  -", entry)
+			}
 
-            var f *os.File
+			return nil
+		}
 
-            exists := err != os.ErrNotExist
-            if exists {
-                perr, ok := err.(*os.PathError)
-                if ok {
-                    exists = perr.Err != syscall.ENOENT
-                }
-            }
+		entry_idx, ok := arg.IntExt("block")
+		if ok {
+			entry, err := val.GetFirstEntry()
+			if err != nil {
+				return err
+			}
 
-            if exists {
-                f, err = os.OpenFile(save, os.O_TRUNC|os.O_WRONLY, 0660)
-            } else {
-                f, err = os.OpenFile(save, os.O_CREATE|os.O_WRONLY, 0660)
-            }
+			for i := int64(0); i < entry_idx; i++ {
+				entry, err = val.GetNextEntry(entry)
+				if err != nil {
+					return err
+				}
+			}
 
-            if err != nil {
-                return ntfs.WrapError(err)
-            }
+			fmt.Println()
+			fmt.Println("Entry:")
+			ntfs.PrintStruct(entry.DirectoryEntryExtendedHeader)
 
-            defer ntfs.DeferedCall(f.Close)
+			block, err := val.GetIndexBlockFromEntry(entry)
+			if err != nil {
+				return err
+			}
 
-            fmt.Println()
-            fmt.Println("Header size:", val.Size-len(val.Data))
+			fmt.Println()
+			fmt.Println("Block:")
+			ntfs.PrintStruct(block)
 
-            _, err = f.Write(val.Content)
-            if err != nil {
-                return ntfs.WrapError(err)
-            }
-        }
+			return nil
+		}
 
-        return nil
-    }
+		save, ok := arg.GetExt("save")
+		if ok {
+			_, err := os.Stat(save)
+			switch err {
+			case os.ErrExist, os.ErrNotExist, nil:
+			default:
+				_, ok := err.(*os.PathError)
+				if !ok {
+					return ntfs.WrapError(err)
+				}
+			}
 
-    attr_list := make([]int, 0)
-    for idx := range attributes {
-        attr_list = append(attr_list, idx)
-    }
+			var f *os.File
 
-    sort.Ints(attr_list)
+			exists := err != os.ErrNotExist
+			if exists {
+				perr, ok := err.(*os.PathError)
+				if ok {
+					exists = perr.Err != syscall.ENOENT
+				}
+			}
 
-    for _, idx := range attr_list {
-        attr := attributes[idx]
+			if exists {
+				f, err = os.OpenFile(save, os.O_TRUNC|os.O_WRONLY, 0660)
+			} else {
+				f, err = os.OpenFile(save, os.O_CREATE|os.O_WRONLY, 0660)
+			}
 
-        fmt.Println()
-        fmt.Println(fmt.Sprintf("Attribute %d :", idx))
-        ntfs.PrintStruct(attr)
+			if err != nil {
+				return ntfs.WrapError(err)
+			}
 
-        desc, err := record.MakeAttributeFromHeader(attr)
-        if err != nil {
-            return err
-        }
+			defer ntfs.DeferedCall(f.Close)
 
-        if desc.Name != "" {
-            fmt.Println("   Name:", desc.Name)
-        }
-    }
+			fmt.Println()
+			fmt.Println("Header size:", val.Size-len(val.Data))
 
-    return nil
+			_, err = f.Write(val.Content)
+			if err != nil {
+				return ntfs.WrapError(err)
+			}
+		}
+
+		return nil
+	}
+
+	attr_list := make([]int, 0)
+	for idx := range attributes {
+		attr_list = append(attr_list, idx)
+	}
+
+	sort.Ints(attr_list)
+
+	for _, idx := range attr_list {
+		attr := attributes[idx]
+
+		fmt.Println()
+		fmt.Println(fmt.Sprintf("Attribute %d :", idx))
+		ntfs.PrintStruct(attr)
+
+		desc, err := record.MakeAttributeFromHeader(attr)
+		if err != nil {
+			return err
+		}
+
+		if desc.Name != "" {
+			fmt.Println("   Name:", desc.Name)
+		}
+	}
+
+	return nil
 }

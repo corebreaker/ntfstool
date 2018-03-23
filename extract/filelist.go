@@ -1,16 +1,19 @@
 package extract
 
 import (
-	"essai/ntfstool/core"
 	"fmt"
 	"os"
 	"reflect"
+
+	"essai/ntfstool/core"
+	"essai/ntfstool/core/dataio"
+	"essai/ntfstool/core/dataio/datafile"
 )
 
 const FILENODES_FORMAT_NAME = "File nodes"
 
 type IFile interface {
-	core.IDataRecord
+	dataio.IDataRecord
 
 	GetFile() *File
 	IsRoot() bool
@@ -19,7 +22,9 @@ type IFile interface {
 }
 
 type tNoneFile struct {
-	core.BaseDataRecord
+	datafile.BaseDataRecord
+
+	zero bool
 }
 
 func (self *tNoneFile) IsRoot() bool   { return false }
@@ -58,7 +63,7 @@ func (self *tFileError) GetFile() *File  { return nil }
 func (self *tFileError) Print()          { fmt.Println("Error:", self.err) }
 
 func init() {
-	core.RegisterFileFormat(FILENODES_FORMAT_NAME, "[NTFS - FNODES]", new(File))
+	datafile.RegisterFileFormat(FILENODES_FORMAT_NAME, "[NTFS - FNODES]", new(File))
 }
 
 type FileStream <-chan IFile
@@ -83,7 +88,7 @@ func (self *tFileStream) Close() error {
 	return nil
 }
 
-func (self *tFileStream) SendRecord(rec core.IDataRecord) {
+func (self *tFileStream) SendRecord(rec dataio.IDataRecord) {
 	self.stream <- rec.(*File)
 }
 
@@ -92,7 +97,7 @@ func (self *tFileStream) SendError(err error) {
 }
 
 type FileReader struct {
-	reader *core.DataReader
+	reader *datafile.DataReader
 }
 
 func (self *FileReader) Close() error {
@@ -153,7 +158,7 @@ func OpenFileReader(filename string) (*FileReader, error) {
 }
 
 func MakeFileReader(file *os.File) (*FileReader, error) {
-	reader, err := core.MakeDataReader(file, FILENODES_FORMAT_NAME)
+	reader, err := datafile.MakeDataReader(file, FILENODES_FORMAT_NAME)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +171,7 @@ func MakeFileReader(file *os.File) (*FileReader, error) {
 }
 
 type FileWriter struct {
-	writer *core.DataWriter
+	writer *datafile.DataWriter
 }
 
 func (self *FileWriter) Close() (err error) {
@@ -187,7 +192,7 @@ func OpenFileWriter(filename string) (*FileWriter, error) {
 }
 
 func MakeFileWriter(file *os.File) (*FileWriter, error) {
-	writer, err := core.MakeDataWriter(file, FILENODES_FORMAT_NAME)
+	writer, err := datafile.MakeDataWriter(file, FILENODES_FORMAT_NAME)
 	if err != nil {
 		return nil, err
 	}

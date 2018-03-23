@@ -35,7 +35,7 @@ func (self *DataWriter) Close() (err error) {
 			}
 		}
 
-		self.file, self.infos.indexes, self.infos.headers, self.writer = nil, nil, nil, nil
+		self.file, self.desc.Indexes, self.desc.Headers, self.writer = nil, nil, nil, nil
 	}()
 
 	pos, err := self.get_pos()
@@ -43,30 +43,22 @@ func (self *DataWriter) Close() (err error) {
 		return err
 	}
 
-	self.infos.indexes = append(self.infos.indexes, [2]int64{-1, pos})
+	self.desc.Indexes = append(self.desc.Indexes, tFileIndex{Logical: -1, Physical: pos})
 
 	if err := self.write_record(new(tNullRecord)); err != nil {
 		return err
 	}
 
-	pos, err = self.get_pos()
+	self.desc.Position, err = self.get_pos()
 	if err != nil {
 		return err
 	}
 
-	if _, err := self.writer.Encode(self.infos.count); err != nil {
-		return core.WrapError(err)
+	if err := self.write_record(self.desc.GetRecord()); err != nil {
+		return err
 	}
 
-	if _, err := self.writer.Encode(self.infos.headers); err != nil {
-		return core.WrapError(err)
-	}
-
-	if _, err := self.writer.Encode(self.infos.indexes); err != nil {
-		return core.WrapError(err)
-	}
-
-	return core.WrapError(binary.Write(self.file, binary.BigEndian, pos))
+	return core.WrapError(binary.Write(self.file, binary.BigEndian, self.desc.Position))
 }
 
 func (self *DataWriter) Write(rec dataio.IDataRecord) (err error) {
@@ -76,7 +68,7 @@ func (self *DataWriter) Write(rec dataio.IDataRecord) (err error) {
 		}
 
 		if err == nil {
-			self.infos.count++
+			self.desc.Count++
 		}
 	}()
 
@@ -89,7 +81,7 @@ func (self *DataWriter) Write(rec dataio.IDataRecord) (err error) {
 		return err
 	}
 
-	self.infos.indexes = append(self.infos.indexes, [2]int64{rec.GetPosition(), pos})
+	self.desc.Indexes = append(self.desc.Indexes, tFileIndex{Logical: rec.GetPosition(), Physical: pos})
 
 	return self.write_record(rec)
 }
@@ -131,7 +123,7 @@ func MakeDataWriter(file *os.File, format_name string) (*DataWriter, error) {
 		return nil, err
 	}
 
-	res.infos.headers = make([]int16, len(format.headers))
+	res.desc.Headers = make([]int16, len(format.headers))
 	for i, header := range format.headers {
 		if err := res.write_record(header); err != nil {
 			return nil, err
@@ -142,8 +134,7 @@ func MakeDataWriter(file *os.File, format_name string) (*DataWriter, error) {
 			return nil, err
 		}
 
-		res.infos.headers[i] = int16(pos - old_pos)
-		fmt.Println("W:", res.infos.headers[i], old_pos, pos)
+		res.desc.Headers[i] = int16(pos - old_pos)
 		old_pos = pos
 	}
 

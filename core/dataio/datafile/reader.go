@@ -25,7 +25,7 @@ func (self *DataReader) Close() error {
 	}
 
 	defer func() {
-		self.file, self.infos.indexes, self.infos.headers = nil, nil, nil
+		self.file, self.desc.Indexes, self.desc.Headers = nil, nil, nil
 	}()
 
 	return core.WrapError(self.file.Close())
@@ -54,11 +54,11 @@ func (self *DataReader) GetRecordAt(index int) (dataio.IDataRecord, error) {
 		return nil, err
 	}
 
-	if (0 > index) || (index >= self.infos.count) {
-		return nil, core.WrapError(fmt.Errorf("Bad index %d (limit= %d)", index, self.infos.count))
+	if (0 > index) || (index >= int(self.desc.Count)) {
+		return nil, core.WrapError(fmt.Errorf("Bad index %d (limit= %d)", index, self.desc.Count))
 	}
 
-	return self.ReadRecord(self.infos.indexes[index][0])
+	return self.ReadRecord(self.desc.Indexes[index].Logical)
 }
 
 func (self *DataReader) InitStream(stream dataio.IDataStream) error {
@@ -75,30 +75,43 @@ func (self *DataReader) InitStream(stream dataio.IDataStream) error {
 		return core.WrapError(err)
 	}
 
-	reader := codec.MakeDecoder(self.file, self.format.registry)
+	reader := codec.MakeDecoder(file, self.format.registry)
 	decoder := reader.ToCoreDecoder()
 
-	for _ = range self.infos.headers {
+	for _ = range self.desc.Headers {
 		if _, err := core.ReadRecord(decoder); err != nil {
-			return core.WrapError(err)
+			return err
 		}
 	}
 
 	close_stream := func() (err error) {
 		defer func() {
-			recover()
-			err = file.Close()
+			defer func() {
+				e := file.Close()
+				if err == nil {
+					err = core.WrapError(e)
+				}
+			}()
+
+			verr := recover()
+			if verr != nil {
+				e, ok := verr.(error)
+				if !ok {
+					e = fmt.Errorf("Error: %s", e)
+				}
+
+				err = core.WrapError(e)
+			}
 		}()
 
-		stream.Close()
-
-		return
+		return stream.Close()
 	}
 
 	go func() {
 		defer core.DeferedCall(close_stream)
 
-		for {
+		cnt := self.desc.Count
+		for i := uint32(0); i < cnt; i++ {
 			record, err := core.ReadRecord(decoder)
 			if err != nil {
 				if err != io.EOF {
@@ -108,13 +121,25 @@ func (self *DataReader) InitStream(stream dataio.IDataStream) error {
 				return
 			}
 
-			if !record.IsNull() {
-				stream.SendRecord(record)
-			}
+			stream.SendRecord(record)
 		}
 	}()
 
 	return nil
+}
+
+func (self *DataReader) IsClosed() bool {
+	_, err := self.file.Seek(0, os.SEEK_END)
+	if err == nil {
+		return false
+	}
+
+	oserr, ok := err.(*os.PathError)
+	if !ok {
+		return false
+	}
+
+	return oserr.Err == os.ErrClosed
 }
 
 func OpenDataReader(filename, format_name string) (*DataReader, error) {
@@ -122,8 +147,6 @@ func OpenDataReader(filename, format_name string) (*DataReader, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	defer f.Close()
 
 	return MakeDataReader(f, format_name)
 }
@@ -179,6 +202,16 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 
 	reader := codec.MakeDecoder(file, format.registry)
 
+	var desc_record tFileDescRecord
+
+	if _, err := reader.Decode(&desc_record); err != nil {
+		return nil, err
+	}
+
+	if _, err := file.Seek(SIGNATURE_LENGTH, os.SEEK_SET); err != nil {
+		return nil, core.WrapError(err)
+	}
+
 	res := &DataReader{
 		tDataContainer: tDataContainer{
 			format: format,
@@ -187,42 +220,28 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 		positions: make(map[int64]*tIndex),
 	}
 
-	if _, err := reader.Decode(&res.infos.count); err != nil {
-		return nil, core.WrapError(err)
-	}
-
-	if _, err := reader.Decode(&res.infos.headers); err != nil {
-		return nil, core.WrapError(err)
-	}
-
-	if _, err := reader.Decode(&res.infos.indexes); err != nil {
-		return nil, core.WrapError(err)
-	}
-
-	if _, err := file.Seek(SIGNATURE_LENGTH, os.SEEK_SET); err != nil {
-		return nil, core.WrapError(err)
-	}
+	res.desc.FromRecord(&desc_record)
 
 	prev := new(tIndex)
 	max_len := int64(0)
 
-	for _, l := range res.infos.headers {
+	for _, l := range res.desc.Headers {
 		length := int64(l)
 		if max_len < length {
 			max_len = length
 		}
 	}
 
-	for _, pos := range res.infos.indexes {
+	for _, pos := range res.desc.Indexes {
 		idx := &tIndex{
-			start: pos[1],
+			start: pos.Physical,
 		}
 
 		if idx.start < 0 {
 			idx.start = position
 		}
 
-		start := pos[0]
+		start := pos.Logical
 
 		if start != 0 {
 			res.positions[start] = idx
@@ -248,17 +267,13 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 
 	res.buffer = buffer.MakeBuffer(int(max_len), res.format.registry)
 
-	for _, l := range res.infos.headers {
+	for _, l := range res.desc.Headers {
 		length := int64(l)
-		p1, _ := res.get_pos()
 
 		res.buffer.Reset()
 		if _, err := file.Read(res.buffer.Get(int(length))); err != nil {
 			return nil, core.WrapError(err)
 		}
-
-		p2, _ := res.get_pos()
-		fmt.Println("L:", length, p1, p2)
 
 		if _, err := core.ReadRecord(res.buffer); err != nil {
 			return nil, err

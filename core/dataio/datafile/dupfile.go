@@ -1,5 +1,3 @@
-//+build windows
-
 package datafile
 
 import (
@@ -10,7 +8,7 @@ import (
 
 type tSysErr string
 
-func (self tSysErr) Error() string { return self }
+func (self tSysErr) Error() string { return string(self) }
 
 func DupFile(f *os.File) (*os.File, error) {
 	res, err := os.Open(f.Name())

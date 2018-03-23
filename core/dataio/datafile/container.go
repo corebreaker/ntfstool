@@ -8,12 +8,7 @@ import (
 )
 
 type tDataContainer struct {
-	infos struct {
-		count   int
-		headers []int16
-		indexes [][2]int64
-	}
-
+	desc   tFileDesc
 	format *tFileFormat
 	file   *os.File
 }
@@ -36,7 +31,7 @@ func (self *tDataContainer) check() error {
 }
 
 func (self *tDataContainer) GetCount() int {
-	return self.infos.count
+	return int(self.desc.Count)
 }
 
 func (self *tDataContainer) GetFormatName() string {

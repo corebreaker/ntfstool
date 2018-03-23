@@ -46,7 +46,7 @@ func (self *Decoder) Decode(val interface{}) (int, error) {
 		return 0, core.WrapError(err)
 	}
 
-	headbuf := make([]byte, szbuf[0])
+	headbuf := make([]byte, szbuf[0]+1)
 
 	n2, err := self.reader.Read(headbuf)
 	if err != nil {
