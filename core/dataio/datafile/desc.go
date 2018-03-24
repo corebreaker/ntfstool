@@ -3,7 +3,9 @@ package datafile
 import (
 	"fmt"
 
-	"essai/ntfstool/core/dataio"
+	"essai/ntfstool/core"
+
+	"github.com/DeDiS/protobuf"
 )
 
 type tFileIndex struct {
@@ -12,8 +14,6 @@ type tFileIndex struct {
 }
 
 type tFileDescRecord struct {
-	BaseDataRecord
-
 	Count    uint32
 	Headers  []int32
 	Indexes  []tFileIndex
@@ -21,38 +21,47 @@ type tFileDescRecord struct {
 	Position int64
 }
 
-func (d *tFileDescRecord) GetPosition() int64      { return d.Position }
-func (d *tFileDescRecord) GetEncodingCode() string { return "$FILEDESC" }
-func (d *tFileDescRecord) String() string          { return fmt.Sprintf("{DESC:%d}", d.GetPosition()) }
-func (d *tFileDescRecord) Print()                  { fmt.Println(d.String()) }
-
 type tFileDesc struct {
+	BaseDataRecord
+
 	Count    uint32
 	Headers  []int16
 	Indexes  []tFileIndex
 	Position int64
 }
 
-func (d *tFileDesc) GetRecord() dataio.IDataRecord {
+func (d *tFileDesc) GetPosition() int64      { return d.Position }
+func (d *tFileDesc) GetEncodingCode() string { return "$FILEDESC" }
+func (d *tFileDesc) String() string          { return fmt.Sprintf("{DESC:%d}", d.GetPosition()) }
+func (d *tFileDesc) Print()                  { fmt.Println(d.String()) }
+
+func (d *tFileDesc) MarshalBinary() (data []byte, err error) {
 	headers := make([]int32, len(d.Headers))
 
 	for i, h := range d.Headers {
 		headers[i] = int32(h)
 	}
 
-	return &tFileDescRecord{
+	res, err := protobuf.Encode(&tFileDescRecord{
 		Count:    d.Count,
 		Headers:  headers,
 		Indexes:  d.Indexes,
 		Sep:      "FILE-END",
 		Position: d.Position,
+	})
+
+	if err != nil {
+		return nil, core.WrapError(err)
 	}
+
+	return res, nil
 }
 
-func (d *tFileDesc) FromRecord(data dataio.IDataRecord) {
-	rec, ok := data.(*tFileDescRecord)
-	if !ok {
-		return
+func (d *tFileDesc) UnmarshalBinary(data []byte) error {
+	var rec tFileDescRecord
+
+	if err := protobuf.Decode(data, &rec); err != nil {
+		return core.WrapError(err)
 	}
 
 	headers := make([]int16, len(rec.Headers))
@@ -67,4 +76,6 @@ func (d *tFileDesc) FromRecord(data dataio.IDataRecord) {
 		Indexes:  rec.Indexes,
 		Position: rec.Position,
 	}
+
+	return nil
 }

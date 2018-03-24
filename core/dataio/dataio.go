@@ -8,12 +8,13 @@ type IDataRecord interface {
 	IsNull() bool
 	GetError() error
 	GetPosition() int64
+	//SetPosition(int64)
 	GetEncodingCode() string
 	Print()
 }
 
 type IDataStream interface {
 	Close() error
-	SendRecord(IDataRecord)
+	SendRecord(uint, IDataRecord)
 	SendError(error)
 }

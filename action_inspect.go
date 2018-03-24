@@ -304,7 +304,10 @@ func do_listnames(arg *tActionArg) error {
 			f_type = "Dir"
 		}
 
-		fmt.Fprintln(os.Stderr, fmt.Sprintf("   %06d - %d : %s { %s, Parent= %v }", j, r.Position, r.Names, f_type, r.Parent))
+		fmt.Fprintln(
+			os.Stderr,
+			fmt.Sprintf("   %06d - %d : %s { %s, Parent= %v }", j, r.Position, r.Names, f_type, r.Parent),
+		)
 	}
 
 	return nil
@@ -317,7 +320,7 @@ func do_position(position int64, arg *tActionArg) error {
 	}
 
 	fmt.Println("Reading")
-	records, err := datafile.MakeDataReader(src, inspect.STATE_FORMAT_NAME)
+	records, err := datafile.MakeDataReader(src, "")
 	if err != nil {
 		return err
 	}

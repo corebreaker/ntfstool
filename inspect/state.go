@@ -10,6 +10,7 @@ import (
 	"essai/ntfstool/core/dataio"
 	"essai/ntfstool/core/dataio/datafile"
 
+	"github.com/DeDiS/protobuf"
 	"github.com/pborman/uuid"
 )
 
@@ -62,6 +63,15 @@ type StateBase struct {
 	MftId    string
 }
 
+func (self *StateBase) GetPosition() int64     { return self.Position }
+func (self *StateBase) GetMftId() string       { return self.MftId }
+func (self *StateBase) SetMft(state *StateMft) { self.MftId = state.MftId }
+func (self *StateBase) Print()                 { fmt.Println(self) }
+
+func (self *StateBase) String() string {
+	return fmt.Sprintf("{STATEBASE: MFTID=%s Position=%d}", self.MftId, self.Position)
+}
+
 type StateFile struct {
 	StateBase
 
@@ -69,9 +79,15 @@ type StateFile struct {
 	Reference core.FileReferenceNumber
 }
 
-func (self *StateBase) GetPosition() int64     { return self.Position }
-func (self *StateBase) GetMftId() string       { return self.MftId }
-func (self *StateBase) SetMft(state *StateMft) { self.MftId = state.MftId }
+func (self *StateFile) String() string {
+	const msg = "{STATFILE: MFTID=%s Parent=%s Ref=%s Pos=%s}"
+
+	return fmt.Sprintf(msg, self.MftId, self.Parent, self.Reference, self.Position)
+}
+
+func (self *StateFile) Print() {
+	fmt.Println(self)
+}
 
 type StateAttribute struct {
 	BasePosition   int64
@@ -177,6 +193,27 @@ func (self *StateFileRecord) String() string {
 	return fmt.Sprintf(msg, self.Name, self.Position, self.MftId, self.Reference, self.Parent)
 }
 
+func (self *StateFileRecord) MarshalBinary() ([]byte, error) {
+	res, err := protobuf.Encode(new(tStateFileRecord).from(self))
+	if err != nil {
+		return nil, core.WrapError(err)
+	}
+
+	return res, nil
+}
+
+func (self *StateFileRecord) UnmarshalBinary(data []byte) error {
+	var rec tStateFileRecord
+
+	if err := protobuf.Decode(data, &rec); err != nil {
+		return core.WrapError(err)
+	}
+
+	rec.to(self)
+
+	return nil
+}
+
 type StateDirEntry struct {
 	BasePosition   int64
 	RecordPosition int64
@@ -259,6 +296,27 @@ func (self *StateIndexRecord) String() string {
 	return fmt.Sprintf(msg, self.Position, self.MftId, self.Reference, self.Parent)
 }
 
+func (self *StateIndexRecord) MarshalBinary() ([]byte, error) {
+	res, err := protobuf.Encode(new(tStateIndexRecord).from(self))
+	if err != nil {
+		return nil, core.WrapError(err)
+	}
+
+	return res, nil
+}
+
+func (self *StateIndexRecord) UnmarshalBinary(data []byte) error {
+	var rec tStateIndexRecord
+
+	if err := protobuf.Decode(data, &rec); err != nil {
+		return core.WrapError(err)
+	}
+
+	rec.to(self)
+
+	return nil
+}
+
 type StateMft struct {
 	StateBase
 
@@ -317,6 +375,27 @@ func (self *StateMft) String() string {
 	return fmt.Sprintf("{%s at %d}", self.MftId, self.Position)
 }
 
+func (self *StateMft) MarshalBinary() ([]byte, error) {
+	res, err := protobuf.Encode(new(tStateMft).from(self))
+	if err != nil {
+		return nil, core.WrapError(err)
+	}
+
+	return res, nil
+}
+
+func (self *StateMft) UnmarshalBinary(data []byte) error {
+	var rec tStateMft
+
+	if err := protobuf.Decode(data, &rec); err != nil {
+		return core.WrapError(err)
+	}
+
+	rec.to(self)
+
+	return nil
+}
+
 func init() {
 	datafile.RegisterFileFormat(
 		STATE_FORMAT_NAME,
@@ -353,7 +432,7 @@ func (self *tStateStream) Close() error {
 	return nil
 }
 
-func (self *tStateStream) SendRecord(rec dataio.IDataRecord) {
+func (self *tStateStream) SendRecord(_ uint, rec dataio.IDataRecord) {
 	self.stream <- rec.(IStateRecord)
 }
 

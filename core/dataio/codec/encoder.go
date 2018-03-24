@@ -2,6 +2,7 @@ package codec
 
 import (
 	"bytes"
+	"encoding"
 	"fmt"
 	"io"
 	"reflect"
@@ -18,25 +19,32 @@ type Encoder struct {
 
 func (self *Encoder) Encode(val interface{}) (int, error) {
 	v := normalize_value(val)
-	if v.Kind() != reflect.Struct {
+
+	if v.Kind() != reflect.Ptr {
 		return 0, core.WrapError(fmt.Errorf("Value with type `%s` should have a struct type", v.Type()))
 	}
 
-	t, ok := self.registry.backward[v.Type()]
+	elt := v.Elem()
+
+	if elt.Kind() != reflect.Struct {
+		return 0, core.WrapError(fmt.Errorf("Value with type `%s` should have a struct type", v.Type()))
+	}
+
+	t, ok := self.registry.backward[elt.Type()]
 	if !ok {
 		return 0, core.WrapError(fmt.Errorf("Type `%s` is not registered", v.Type()))
 	}
 
-	var to_encode reflect.Value
-
-	if v.CanAddr() {
-		to_encode = v.Addr()
-	} else {
-		to_encode = reflect.New(v.Type())
-		to_encode.Elem().Set(v)
+	m, ok := val.(encoding.BinaryMarshaler)
+	if ok {
+		val = m
 	}
 
-	valbuf, err := protobuf.Encode(to_encode.Interface())
+	to_encode := &tRecord{
+		Value: val,
+	}
+
+	valbuf, err := protobuf.Encode(to_encode)
 	if err != nil {
 		return 0, core.AddErrorInfo(core.WrapError(err), "for value with type: `%s`", v.Type())
 	}

@@ -71,9 +71,11 @@ func (self *Decoder) Decode(val interface{}) (int, error) {
 		return 0, core.WrapError(err)
 	}
 
-	res := reflect.New(t)
+    rec := &tRecord{
+        Value: reflect.New(t).Interface(),
+    }
 
-	if err := protobuf.Decode(valbuf, res.Interface()); err != nil {
+	if err := protobuf.Decode(valbuf, rec); err != nil {
 		return 0, core.WrapError(err)
 	}
 
@@ -92,7 +94,7 @@ func (self *Decoder) Decode(val interface{}) (int, error) {
 			err = core.WrapError(erri)
 		}()
 
-		v.Elem().Set(res.Elem())
+		v.Elem().Set(reflect.ValueOf(rec.Value).Elem())
 	}()
 
 	if err != nil {

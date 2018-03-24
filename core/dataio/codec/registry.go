@@ -22,11 +22,18 @@ loop:
 		}
 	}
 
-	return val
+	if val.CanAddr() {
+		return val.Addr()
+	}
+
+	res := reflect.New(val.Type())
+	res.Set(val)
+
+	return res
 }
 
 func get_value_type(value interface{}) reflect.Type {
-	return normalize_value(value).Type()
+	return normalize_value(value).Elem().Type()
 }
 
 func get_registered_name(name string) string {

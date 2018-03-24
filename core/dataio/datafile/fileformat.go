@@ -36,7 +36,7 @@ func RegisterFileFormat(name, signature string, headers ...dataio.IDataRecord) {
 	if name != COMMON_DATA_FILEFORMAT_NAME {
 		ref, ok := file_formats[COMMON_DATA_FILEFORMAT_NAME]
 		if !ok {
-			RegisterFileFormat(COMMON_DATA_FILEFORMAT_NAME, "", new(tNullRecord), new(tFileDescRecord))
+			RegisterFileFormat(COMMON_DATA_FILEFORMAT_NAME, "", new(tNullRecord), new(tFileDesc))
 			ref = file_formats[COMMON_DATA_FILEFORMAT_NAME]
 		}
 

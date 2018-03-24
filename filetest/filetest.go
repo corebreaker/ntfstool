@@ -5,12 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"reflect"
 	"strconv"
+	"strings"
 
 	"essai/ntfstool/core"
 	"essai/ntfstool/core/dataio"
 	"essai/ntfstool/core/dataio/codec"
 	"essai/ntfstool/core/dataio/datafile"
+	"essai/ntfstool/extract"
+	"essai/ntfstool/inspect"
 )
 
 type tReader struct {
@@ -97,24 +101,54 @@ func MakeBuffer(size int, registry *codec.Registry) *Buffer {
 type tRecord struct {
 	datafile.BaseDataRecord
 
-	I int
+	I, J int
 }
 
-func (self *tRecord) String() string          { return fmt.Sprintf("<V:%d>", self.I) }
-func (self *tRecord) GetPosition() int64      { return int64(self.I) }
-func (self *tRecord) GetEncodingCode() string { return "VAL" }
-func (self *tRecord) Print()                  { fmt.Println(self) }
+func (r *tRecord) String() string          { return fmt.Sprintf("<V:%d/%d>", r.I, r.J) }
+func (r *tRecord) GetPosition() int64      { return int64(r.I) }
+func (r *tRecord) GetEncodingCode() string { return "VAL" }
+func (r *tRecord) Print()                  { fmt.Println(r) }
+
+func (r *tRecord) MarshalBinary() ([]byte, error) {
+	return []byte(fmt.Sprintf("%d|%d", r.I, r.J)), nil
+}
+
+func (r *tRecord) UnmarshalBinary(data []byte) error {
+	parts := strings.Split(string(data), "|")
+
+	i, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return core.WrapError(err)
+	}
+
+	j, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return core.WrapError(err)
+	}
+
+	r.I, r.J = i, j
+
+	return nil
+}
 
 type tStream struct {
 	cancel context.CancelFunc
 }
 
-func (s *tStream) Close() error                    { fmt.Println("End"); s.cancel(); return nil }
-func (*tStream) SendRecord(rec dataio.IDataRecord) { rec.Print() }
-func (*tStream) SendError(err error)               { panic(err) }
+func (s *tStream) Close() error                          { fmt.Println("End"); s.cancel(); return nil }
+func (*tStream) SendRecord(i uint, r dataio.IDataRecord) { fmt.Printf("  - %d: ", i+1); r.Print() }
+func (*tStream) SendError(err error)                     { panic(err) }
 
 func work() error {
-	datafile.RegisterFileFormat("Example", "[-- EXAMPLE --]", new(tRecord))
+	datafile.RegisterFileFormat(
+		"Example",
+		"[-- EXAMPLE --]",
+		new(tRecord),
+		new(extract.File),
+		new(inspect.StateMft),
+		new(inspect.StateIndexRecord),
+		new(inspect.StateFileRecord),
+	)
 
 	filename := flag.String("file", "", "File path")
 	is_record := flag.Bool("record", false, "Read record")
@@ -223,7 +257,7 @@ func work() error {
 		defer f.Close()
 
 		fmt.Println("Count=", f.GetCount(), "- At:", *index)
-		if *index < 0 {
+		if *index <= 0 {
 			ctx, cancel := context.WithCancel(context.Background())
 
 			fmt.Println("List:")
@@ -236,7 +270,7 @@ func work() error {
 			return nil
 		}
 
-		rec, err := f.GetRecordAt(*index)
+		rec, err := f.GetRecordAt(*index - 1)
 		if err != nil {
 			return err
 		}
@@ -253,15 +287,46 @@ func work() error {
 
 	defer core.DeferedCall(f.Close)
 
-	for _, v := range flag.Args() {
-		val, err := strconv.Atoi(v)
+	for i, v := range flag.Args() {
+		parts := strings.Split(v, ":")
+
+		if len(parts) < 2 {
+			parts = []string{fmt.Sprint(i + 1), parts[0]}
+		}
+
+		valI, err := strconv.Atoi(parts[0])
 		if err != nil {
 			return err
 		}
 
-		if err := f.Write(&tRecord{I: val}); err != nil {
+		valJ, err := strconv.Atoi(parts[1])
+		if err != nil {
 			return err
 		}
+
+		if err := f.Write(&tRecord{I: valI, J: valJ}); err != nil {
+			return err
+		}
+	}
+
+	pos := int64(len(flag.Args())) + 1
+	setPos := func(val interface{}) dataio.IDataRecord {
+		reflect.ValueOf(val).Elem().FieldByName("Position").Set(reflect.ValueOf(pos))
+		pos++
+
+		return val.(dataio.IDataRecord)
+	}
+
+	if err := f.Write(setPos(new(inspect.StateMft))); err != nil {
+		return err
+	}
+
+	if err := f.Write(setPos(new(inspect.StateIndexRecord))); err != nil {
+		return err
+	}
+
+	if err := f.Write(setPos(new(inspect.StateFileRecord))); err != nil {
+		return err
 	}
 
 	return nil

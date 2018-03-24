@@ -38,7 +38,7 @@ func (self *DataReader) ReadRecord(position int64) (dataio.IDataRecord, error) {
 
 	idx, ok := self.positions[position]
 	if !ok {
-		return nil, core.WrapError(fmt.Errorf("Unknown position", position))
+		return nil, core.WrapError(fmt.Errorf("Unknown position: %d", position))
 	}
 
 	self.buffer.Reset()
@@ -121,7 +121,7 @@ func (self *DataReader) InitStream(stream dataio.IDataStream) error {
 				return
 			}
 
-			stream.SendRecord(record)
+			stream.SendRecord(uint(i), record)
 		}
 	}()
 
@@ -182,7 +182,7 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 
 	default:
 		if string(signature) != string(format.signature) {
-			return nil, core.WrapError(fmt.Errorf("Bad file format"))
+			return nil, core.WrapError(fmt.Errorf("Bad file format: `%s` != `%s`", signature, format.signature))
 		}
 	}
 
@@ -202,16 +202,6 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 
 	reader := codec.MakeDecoder(file, format.registry)
 
-	var desc_record tFileDescRecord
-
-	if _, err := reader.Decode(&desc_record); err != nil {
-		return nil, err
-	}
-
-	if _, err := file.Seek(SIGNATURE_LENGTH, os.SEEK_SET); err != nil {
-		return nil, core.WrapError(err)
-	}
-
 	res := &DataReader{
 		tDataContainer: tDataContainer{
 			format: format,
@@ -220,7 +210,13 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 		positions: make(map[int64]*tIndex),
 	}
 
-	res.desc.FromRecord(&desc_record)
+	if _, err := reader.Decode(&res.desc); err != nil {
+		return nil, err
+	}
+
+	if _, err := file.Seek(SIGNATURE_LENGTH, os.SEEK_SET); err != nil {
+		return nil, core.WrapError(err)
+	}
 
 	prev := new(tIndex)
 	max_len := int64(0)
@@ -241,10 +237,8 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 			idx.start = position
 		}
 
-		start := pos.Logical
-
-		if start != 0 {
-			res.positions[start] = idx
+		if pos.Logical != 0 {
+			res.positions[pos.Logical] = idx
 		}
 
 		length := idx.start - prev.start

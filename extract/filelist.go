@@ -88,7 +88,7 @@ func (self *tFileStream) Close() error {
 	return nil
 }
 
-func (self *tFileStream) SendRecord(rec dataio.IDataRecord) {
+func (self *tFileStream) SendRecord(_ uint, rec dataio.IDataRecord) {
 	self.stream <- rec.(*File)
 }
 

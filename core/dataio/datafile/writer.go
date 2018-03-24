@@ -54,7 +54,7 @@ func (self *DataWriter) Close() (err error) {
 		return err
 	}
 
-	if err := self.write_record(self.desc.GetRecord()); err != nil {
+	if err := self.write_record(&self.desc); err != nil {
 		return err
 	}
 

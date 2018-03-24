@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/siddontang/go/ioutil2"
@@ -14,10 +13,11 @@ import (
 
 var (
 	actions = []iActionDef{
+		tDefaultActionDef{handler: do_help, name: "help"},
 		tStringActionDef{handler: do_count, name: "count"},
-		tStringActionDef{handler: do_scan, name: "scan"},
 		tStringActionDef{handler: do_set_source, name: "in", next: true},
 		tStringActionDef{handler: do_set_destination, name: "out", next: true},
+		tDefaultActionDef{handler: do_scan, name: "scan"},
 		tDefaultActionDef{handler: do_file_count, name: "file-count"},
 		tDefaultActionDef{handler: do_state_count, name: "state-count"},
 		tIntegerActionDef{handler: do_show, name: "show"},
@@ -36,6 +36,7 @@ var (
 		tIntegerActionDef{handler: do_mft, name: "mft", next: true, index: true},
 		tDefaultActionDef{handler: do_names, name: "names"},
 		tIntegerActionDef{handler: do_record, name: "record", index: true},
+		tIntegerActionDef{handler: do_sector, name: "sector", index: true},
 		tIntegerActionDef{handler: do_file, name: "file"},
 	}
 )
@@ -62,6 +63,7 @@ func do_mft(offset int64, arg *tActionArg) error {
 
 	return nil
 }
+
 func do_set_source(source string, arg *tActionArg) error {
 	if source == "" {
 		return ntfs.WrapError(fmt.Errorf("No source file specified"))
@@ -185,14 +187,25 @@ func do_record(record_num int64, arg *tActionArg) error {
 	return nil
 }
 
-func do_scan(destination string, arg *tActionArg) error {
-	if destination == "" {
-		dir, err := ntfs.GetDirectory()
-		if err != nil {
-			return err
-		}
+func do_sector(offset int64, arg *tActionArg) error {
+	var sector [512]byte
 
-		destination = filepath.Join(dir, "records.dat")
+	num := (offset + 511) / 512
+	if err := arg.disk.GetDisk().ReadSector(num, sector[:]); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("Content:")
+	ntfs.PrintBytes(sector[:])
+
+	return nil
+}
+
+func do_scan(arg *tActionArg) error {
+	destination, err := arg.GetOutput()
+	if err != nil {
+		return err
 	}
 
 	return inspect.Scan(arg.partition, destination)
