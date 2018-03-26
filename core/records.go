@@ -115,6 +115,7 @@ type RecordHeader struct {
 
 type FileRecord struct {
 	RecordHeader
+
 	SequenceNumber      uint16
 	LinkCount           uint16
 	AttributesOffset    uint16

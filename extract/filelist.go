@@ -66,12 +66,30 @@ func init() {
 	datafile.RegisterFileFormat(FILENODES_FORMAT_NAME, "[NTFS - FNODES]", new(File))
 }
 
-type FileStream <-chan IFile
+type IFileStreamItem interface {
+	Index() int
+	Record() IFile
+}
+
+type tFileStreamError struct {
+	record IFile
+}
+
+func (*tFileStreamError) Index() int       { return -1 }
+func (se *tFileStreamError) Record() IFile { return se.Record() }
+
+type tFileStreamRecord struct {
+	tFileStreamError
+
+	index int
+}
+
+func (sr *tFileStreamRecord) Index() int { return sr.index }
+
+type FileStream <-chan IFileStreamItem
 
 func (self FileStream) Close() error {
-	defer func() {
-		recover()
-	}()
+	defer core.DiscardPanic()
 
 	reflect.ValueOf(self).Close()
 
@@ -79,21 +97,30 @@ func (self FileStream) Close() error {
 }
 
 type tFileStream struct {
-	stream chan IFile
+	stream chan IFileStreamItem
 }
 
 func (self *tFileStream) Close() error {
+	defer core.DiscardPanic()
+
 	close(self.stream)
 
 	return nil
 }
 
-func (self *tFileStream) SendRecord(_ uint, rec dataio.IDataRecord) {
-	self.stream <- rec.(*File)
+func (self *tFileStream) SendRecord(i uint, rec dataio.IDataRecord) {
+	defer core.DiscardPanic()
+
+	self.stream <- &tFileStreamRecord{
+		tFileStreamError: tFileStreamError{rec.(*File)},
+		index:            int(i),
+	}
 }
 
 func (self *tFileStream) SendError(err error) {
-	self.stream <- &tFileError{err: err}
+	defer core.DiscardPanic()
+
+	self.stream <- &tFileStreamError{&tFileError{err: err}}
 }
 
 type FileReader struct {
@@ -137,7 +164,7 @@ func (self *FileReader) GetRecordAt(index int) (IFile, error) {
 }
 
 func (self *FileReader) MakeStream() (FileStream, error) {
-	res := make(chan IFile)
+	res := make(chan IFileStreamItem)
 
 	if err := self.reader.InitStream(&tFileStream{res}); err != nil {
 		return nil, err

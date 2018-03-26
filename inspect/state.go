@@ -249,7 +249,7 @@ func (self *StateIndexRecord) Init(disk *core.DiskIO) (bool, error) {
 	record := &self.Header
 	header := &record.RecordHeader
 
-	if (header.Type != core.RECTYP_FILE) || (header.UsaCount > 9) || ((header.UsaOffset + (header.UsaCount * 2)) >= 4096) {
+	if (header.Type != core.RECTYP_INDX) || (header.UsaCount > 9) || ((header.UsaOffset + (header.UsaCount * 2)) >= 4096) {
 		return false, nil
 	}
 
@@ -288,11 +288,12 @@ func (self *StateIndexRecord) Init(disk *core.DiskIO) (bool, error) {
 		}
 	}
 
-	return false, nil
+	return true, nil
 }
 
 func (self *StateIndexRecord) String() string {
-	msg := "{<Index> at %d [MFT:%s] [REF:%s] [Parent:%s]}"
+	const msg = "{<Index> at %d [MFT:%s] [REF:%s] [Parent:%s]}"
+
 	return fmt.Sprintf(msg, self.Position, self.MftId, self.Reference, self.Parent)
 }
 
@@ -406,7 +407,27 @@ func init() {
 	)
 }
 
-type StateStream <-chan IStateRecord
+type IStateStreamItem interface {
+	Index() int
+	Record() IStateRecord
+}
+
+type tStateStreamError struct {
+	record IStateRecord
+}
+
+func (*tStateStreamError) Index() int              { return -1 }
+func (se *tStateStreamError) Record() IStateRecord { return se.record }
+
+type tStateStreamRecord struct {
+	tStateStreamError
+
+	index int
+}
+
+func (sr *tStateStreamRecord) Index() int { return sr.index }
+
+type StateStream <-chan IStateStreamItem
 
 func (self StateStream) Close() error {
 	defer func() {
@@ -419,25 +440,30 @@ func (self StateStream) Close() error {
 }
 
 type tStateStream struct {
-	stream chan IStateRecord
+	stream chan IStateStreamItem
 }
 
 func (self *tStateStream) Close() error {
-	defer func() {
-		recover()
-	}()
+	defer core.DiscardPanic()
 
 	close(self.stream)
 
 	return nil
 }
 
-func (self *tStateStream) SendRecord(_ uint, rec dataio.IDataRecord) {
-	self.stream <- rec.(IStateRecord)
+func (self *tStateStream) SendRecord(i uint, rec dataio.IDataRecord) {
+	defer core.DiscardPanic()
+
+	self.stream <- &tStateStreamRecord{
+		tStateStreamError: tStateStreamError{rec.(IStateRecord)},
+		index:             int(i),
+	}
 }
 
 func (self *tStateStream) SendError(err error) {
-	self.stream <- &tStateError{err: err}
+	defer core.DiscardPanic()
+
+	self.stream <- &tStateStreamError{&tStateError{err: err}}
 }
 
 type StateReader struct {
@@ -481,7 +507,7 @@ func (self *StateReader) GetRecordAt(index int) (IStateRecord, error) {
 }
 
 func (self *StateReader) MakeStream() (StateStream, error) {
-	res := make(chan IStateRecord)
+	res := make(chan IStateStreamItem)
 
 	if err := self.reader.InitStream(&tStateStream{res}); err != nil {
 		return nil, err

@@ -215,6 +215,12 @@ func do_file(file int64, arg *tActionArg) error {
 			return nil
 		}
 
+		if _, value := arg.GetExt("value"); value {
+			fmt.Println()
+			fmt.Println("Content:")
+			ntfs.PrintBytes(val.Data)
+		}
+
 		entry_idx, ok := arg.IntExt("block")
 		if ok {
 			entry, err := val.GetFirstEntry()

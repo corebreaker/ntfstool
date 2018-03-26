@@ -2,31 +2,50 @@ package core
 
 import (
 	"fmt"
-    "unicode"
+	"io"
+	"os"
+	"unicode"
 )
 
 func PrintBytes(b []byte) {
-    line := ""
+	FprintBytes(os.Stdout, b)
+}
+
+func FprintBytes(w io.Writer, b []byte) {
+	line := ""
 	for i, v := range b {
 		if (i % 16) == 0 {
-			fmt.Printf("%08x:", i)
+			fmt.Fprintf(w, "%08x:", i)
 		}
 
 		if (i % 2) == 0 {
-			fmt.Print(" ")
+			fmt.Fprint(w, " ")
 		}
 
-		fmt.Printf("%02x", v)
-        r := rune(v)
-        if unicode.IsPrint(r) {
-            line += fmt.Sprintf("%c", r)
-        } else {
-            line += "."
-        }
+		fmt.Fprintf(w, "%02x", v)
+		r := rune(v)
+		if unicode.IsPrint(r) {
+			line += fmt.Sprintf("%c", r)
+		} else {
+			line += "."
+		}
 
 		if ((i + 1) % 16) == 0 {
-			fmt.Println(" ", line)
-            line = ""
+			fmt.Fprintln(w, " ", line)
+			line = ""
 		}
+	}
+
+	sz := len(b) % 16
+	if sz != 0 {
+		for i := sz; i < 16; i++ {
+			if (i % 2) == 0 {
+				fmt.Fprint(w, " ")
+			}
+
+			fmt.Fprint(w, "  ")
+		}
+
+		fmt.Fprintln(w, " ", line)
 	}
 }

@@ -35,8 +35,10 @@ var (
 		tIntegerActionDef{handler: do_start, name: "start", next: true, index: true},
 		tIntegerActionDef{handler: do_mft, name: "mft", next: true, index: true},
 		tDefaultActionDef{handler: do_names, name: "names"},
+		tDefaultActionDef{handler: do_find, name: "find"},
 		tIntegerActionDef{handler: do_record, name: "record", index: true},
 		tIntegerActionDef{handler: do_sector, name: "sector", index: true},
+		tIntegerActionDef{handler: do_cluster, name: "cluster", index: true},
 		tIntegerActionDef{handler: do_file, name: "file"},
 	}
 )
@@ -197,7 +199,25 @@ func do_sector(offset int64, arg *tActionArg) error {
 
 	fmt.Println()
 	fmt.Println("Content:")
+	fmt.Printf("Content at %d:", num)
+	fmt.Println()
 	ntfs.PrintBytes(sector[:])
+
+	return nil
+}
+
+func do_cluster(offset int64, arg *tActionArg) error {
+	var cluster [4096]byte
+
+	num := (offset + 4095) / 4096
+	if err := arg.disk.GetDisk().ReadCluster(num, cluster[:]); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Printf("Content at %d:", num*8)
+	fmt.Println()
+	ntfs.PrintBytes(cluster[:])
 
 	return nil
 }

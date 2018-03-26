@@ -280,9 +280,9 @@ func (self *tAttributeHeader) to(dest *core.AttributeHeader) *core.AttributeHead
 	var non_resident core.Boolean
 
 	if self.NonResident {
-		non_resident = core.BOOL_FALSE
-	} else {
 		non_resident = core.BOOL_TRUE
+	} else {
+		non_resident = core.BOOL_FALSE
 	}
 
 	*dest = core.AttributeHeader{

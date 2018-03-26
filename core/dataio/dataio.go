@@ -8,7 +8,6 @@ type IDataRecord interface {
 	IsNull() bool
 	GetError() error
 	GetPosition() int64
-	//SetPosition(int64)
 	GetEncodingCode() string
 	Print()
 }

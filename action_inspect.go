@@ -60,12 +60,28 @@ func do_fillinfo(arg *tActionArg) error {
 	defer core.DeferedCall(writer.Close)
 
 	i, cnt := 0, states.GetCount()
+	idx_count := 0
+	idx_good := 0
 
 	fmt.Println(fmt.Sprintf("Filling (count= %d)", cnt))
-	for state := range stream {
+	for item := range stream {
 		progress := 100 * i / cnt
 		fmt.Printf("\rDone: %d %%", progress)
 		i++
+
+		state := item.Record()
+		if err := state.GetError(); err != nil {
+			return err
+		}
+
+		if state.IsNull() {
+			continue
+		}
+
+		_, idx_ok := state.(*inspect.StateIndexRecord)
+		if idx_ok {
+			idx_count++
+		}
 
 		ok, err := state.Init(disk)
 		if err != nil {
@@ -73,6 +89,9 @@ func do_fillinfo(arg *tActionArg) error {
 		}
 
 		if ok {
+			if idx_ok {
+				idx_good++
+			}
 			if err := writer.Write(state); err != nil {
 				return nil
 			}
@@ -80,6 +99,7 @@ func do_fillinfo(arg *tActionArg) error {
 	}
 
 	fmt.Println("\r100 %                                                      ")
+	fmt.Println("Indexes:", idx_good, "/", idx_count)
 
 	return nil
 }
@@ -111,9 +131,18 @@ func do_check(verbose bool, arg *tActionArg) error {
 	i, sz := 0, states.GetCount()
 
 	fmt.Println("Searching")
-	for record := range stream {
+	for item := range stream {
 		fmt.Printf("\r%d %%", i*100/sz)
 		i++
+
+		record := item.Record()
+		if err := record.GetError(); err != nil {
+			return err
+		}
+
+		if record.IsNull() {
+			continue
+		}
 
 		if record.GetType() != inspect.STATE_RECORD_TYPE_FILE {
 			continue
@@ -126,7 +155,7 @@ func do_check(verbose bool, arg *tActionArg) error {
 			}
 
 			if attr.Header.NonResident != core.BOOL_FALSE {
-				msg := fmt.Sprintf("  - Nonresident found at %d [attribute %d]", r.Position, n)
+				msg := fmt.Sprintf("  - Nonresident found at %d [record %d, attribute %d]", r.Position, item.Index(), n)
 				non_resident_names = append(non_resident_names, msg)
 			}
 		}
@@ -139,18 +168,18 @@ func do_check(verbose bool, arg *tActionArg) error {
 		}
 	}
 
-	cnt := 0
-
 	fmt.Println("\rDone.")
+
+	cnt := 0
 
 	print_result := func(list []string, msg string) {
 		fmt.Println()
 		sz := len(list)
 		if sz > 0 {
 			if verbose {
-				fmt.Println(msg + ":")
+				fmt.Fprintln(os.Stderr, msg+":")
 				for _, l := range list {
-					fmt.Println(l)
+					fmt.Fprintln(os.Stderr, l)
 				}
 			} else {
 				fmt.Println(msg+":", sz)
@@ -164,7 +193,7 @@ func do_check(verbose bool, arg *tActionArg) error {
 	print_result(duplicates, "Duplicate paths")
 
 	if cnt == 0 {
-		fmt.Println("No Record found")
+		fmt.Println("No problem encountered")
 	}
 
 	return nil
@@ -201,9 +230,18 @@ func do_complete(arg *tActionArg) error {
 	i, sz := 0, states.GetCount()
 
 	fmt.Println("Completing")
-	for record := range stream {
+	for item := range stream {
 		fmt.Printf("\r%d %%", i*100/sz)
 		i++
+
+		record := item.Record()
+		if err := record.GetError(); err != nil {
+			return err
+		}
+
+		if record.IsNull() {
+			continue
+		}
 
 		err := func() error {
 			if record.GetType() != inspect.STATE_RECORD_TYPE_FILE {
@@ -289,9 +327,18 @@ func do_listnames(arg *tActionArg) error {
 	i := 0
 
 	fmt.Println("Result")
-	for record := range stream {
+	for item := range stream {
 		j := i
 		i++
+
+		record := item.Record()
+		if err := record.GetError(); err != nil {
+			return err
+		}
+
+		if record.IsNull() {
+			continue
+		}
 
 		if record.GetType() != inspect.STATE_RECORD_TYPE_FILE {
 			continue
@@ -395,7 +442,17 @@ func do_show_mft(mft string, arg *tActionArg) error {
 	fmt.Println()
 	fmt.Println("Result:")
 	if mft != "" {
-		for state := range stream {
+		for item := range stream {
+			state := item.Record()
+
+			if err := state.GetError(); err != nil {
+				return err
+			}
+
+			if state.IsNull() {
+				continue
+			}
+
 			if (state.GetType() == inspect.STATE_RECORD_TYPE_MFT) && (state.GetMftId() == mft) {
 				core.PrintStruct(state)
 
@@ -408,7 +465,17 @@ func do_show_mft(mft string, arg *tActionArg) error {
 
 	var list []inspect.IStateRecord
 
-	for state := range stream {
+	for item := range stream {
+		state := item.Record()
+
+		if err := state.GetError(); err != nil {
+			return err
+		}
+
+		if state.IsNull() {
+			continue
+		}
+
 		if state.GetType() == inspect.STATE_RECORD_TYPE_MFT {
 			list = append(list, state)
 		}

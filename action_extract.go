@@ -1,282 +1,292 @@
 package main
 
 import (
-    "essai/ntfstool/core"
-    "essai/ntfstool/extract"
-    "essai/ntfstool/inspect"
-    "fmt"
-    "os"
+	"essai/ntfstool/core"
+	"essai/ntfstool/extract"
+	"essai/ntfstool/inspect"
+	"fmt"
+	"os"
 
-    "github.com/pborman/uuid"
+	"github.com/pborman/uuid"
 )
 
 func do_file_count(arg *tActionArg) error {
-    src, err := arg.GetInput()
-    if err != nil {
-        return err
-    }
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    files, err := extract.MakeFileReader(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	files, err := extract.MakeFileReader(src)
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Count=", files.GetCount())
+	fmt.Println("Count=", files.GetCount())
 
-    return nil
+	return nil
 }
 
 func do_mkfilelist(arg *tActionArg) error {
-    src, dest, err := arg.GetFiles()
-    if err != nil {
-        return err
-    }
+	src, dest, err := arg.GetFiles()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    reader, err := inspect.MakeStateReader(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	reader, err := inspect.MakeStateReader(src)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(reader.Close)
+	defer core.DeferedCall(reader.Close)
 
-    stream, err := reader.MakeStream()
-    if err != nil {
-        return err
-    }
+	stream, err := reader.MakeStream()
+	if err != nil {
+		return err
+	}
 
-    mfts := make(map[string]*inspect.StateMft)
-    names := make(map[string]map[int64]map[int64]string)
-    files := make(map[string]map[int64]*inspect.StateFileRecord)
-    file_list := make([]*inspect.StateFileRecord, 0)
+	mfts := make(map[string]*inspect.StateMft)
+	names := make(map[string]map[int64]map[int64]string)
+	files := make(map[string]map[int64]*inspect.StateFileRecord)
+	file_list := make([]*inspect.StateFileRecord, 0)
 
-    i, cnt := 0, reader.GetCount()
+	i, cnt := 0, reader.GetCount()
 
-    fmt.Println("Spliting states")
-    for f := range stream {
-        fmt.Printf("\rDone: %d %%", 100*i/cnt)
-        i++
+	fmt.Println("Spliting states")
+	for item := range stream {
+		fmt.Printf("\rDone: %d %%", 100*i/cnt)
+		i++
 
-        id := f.GetMftId()
+		rec := item.Record()
 
-        switch f.GetType() {
-        case inspect.STATE_RECORD_TYPE_FILE:
-            record := f.(*inspect.StateFileRecord)
+		if err := rec.GetError(); err != nil {
+			return err
+		}
 
-            sub_list, ok := files[id]
-            if !ok {
-                sub_list = make(map[int64]*inspect.StateFileRecord)
-                files[id] = sub_list
-            }
+		if rec.IsNull() {
+			continue
+		}
 
-            sub_list[record.Reference.GetFileIndex()] = record
-            file_list = append(file_list, record)
+		id := rec.GetMftId()
 
-        case inspect.STATE_RECORD_TYPE_INDEX:
-            sub_list, ok := names[id]
-            if !ok {
-                sub_list = make(map[int64]map[int64]string)
-                names[id] = sub_list
-            }
+		switch rec.GetType() {
+		case inspect.STATE_RECORD_TYPE_FILE:
+			record := rec.(*inspect.StateFileRecord)
 
-            record := f.(*inspect.StateIndexRecord)
+			sub_list, ok := files[id]
+			if !ok {
+				sub_list = make(map[int64]*inspect.StateFileRecord)
+				files[id] = sub_list
+			}
 
-            contents, ok := sub_list[record.Reference.GetFileIndex()]
-            if !ok {
-                contents = make(map[int64]string)
-                sub_list[record.Reference.GetFileIndex()] = contents
-            }
+			sub_list[record.Reference.GetFileIndex()] = record
+			file_list = append(file_list, record)
 
-            for _, file := range record.Entries {
-                if file.Header.FilenameType != 1 {
-                    continue
-                }
+		case inspect.STATE_RECORD_TYPE_INDEX:
+			sub_list, ok := names[id]
+			if !ok {
+				sub_list = make(map[int64]map[int64]string)
+				names[id] = sub_list
+			}
 
-                contents[file.Header.FileReferenceNumber.GetFileIndex()] = file.Name
-            }
+			record := rec.(*inspect.StateIndexRecord)
 
-        case inspect.STATE_RECORD_TYPE_MFT:
-            mfts[id] = f.(*inspect.StateMft)
-        }
-    }
+			contents, ok := sub_list[record.Reference.GetFileIndex()]
+			if !ok {
+				contents = make(map[int64]string)
+				sub_list[record.Reference.GetFileIndex()] = contents
+			}
 
-    fmt.Println("\r100%                                                      ")
+			for _, file := range record.Entries {
+				if file.Header.FilenameType != 1 {
+					continue
+				}
 
-    fmt.Println("Make list")
-    cnt = len(file_list)
+				contents[file.Header.FileReferenceNumber.GetFileIndex()] = file.Name
+			}
 
-    file_id_map := make(map[string]map[int64]*extract.File)
-    res_list := make([]*extract.File, 0)
+		case inspect.STATE_RECORD_TYPE_MFT:
+			mfts[id] = rec.(*inspect.StateMft)
+		}
+	}
 
-    for i, file := range file_list {
-        fmt.Printf("\rDone: %d %%", 100*i/cnt)
+	fmt.Println("\r100%                                                      ")
 
-        attrs := file.Header.GetAttributeFilteredList(core.ATTR_DATA)
-        if len(attrs) == 0 {
-            continue
-        }
+	fmt.Println("Make list")
+	cnt = len(file_list)
 
-        attr_data, err := file.Header.MakeAttributeFromOffset(attrs[0])
-        if err != nil {
-            return err
-        }
+	file_id_map := make(map[string]map[int64]*extract.File)
+	res_list := make([]*extract.File, 0)
 
-        id := uuid.New()
-        position := file.Position
-        size := attr_data.GetSize()
+	for i, file := range file_list {
+		fmt.Printf("\rDone: %d %%", 100*i/cnt)
 
-        mft := file.MftId
+		attrs := file.Header.GetAttributeFilteredList(core.ATTR_DATA)
+		if len(attrs) == 0 {
+			continue
+		}
 
-        ref := file.Reference.GetFileIndex()
-        name := names[mft][file.Parent.GetFileIndex()][ref]
+		attr_data, err := file.Header.MakeAttributeFromOffset(attrs[0])
+		if err != nil {
+			return err
+		}
 
-        runlist := core.RunList(nil)
-        if (file.Header.Flags & core.FFLAG_DIRECTORY) != core.FFLAG_NONE {
-            runlist_src := attr_data.GetRunList()
+		id := uuid.New()
+		position := file.Position
+		size := attr_data.GetSize()
 
-            runlist_size := len(runlist_src)
-            runlist := make(core.RunList, runlist_size)
+		mft := file.MftId
 
-            origin := core.ClusterNumber(mfts[file.MftId].PartOrigin)
+		ref := file.Reference.GetFileIndex()
+		name := names[mft][file.Parent.GetFileIndex()][ref]
 
-            for j, entry := range runlist_src[1:] {
-                runlist[j] = &core.RunEntry{
-                    Start: origin + entry.Start,
-                    Count: entry.Count,
-                    Zero:  entry.Zero,
-                }
-            }
-        }
+		runlist := core.RunList(nil)
+		if (file.Header.Flags & core.FFLAG_DIRECTORY) != core.FFLAG_NONE {
+			runlist_src := attr_data.GetRunList()
 
-        f := &extract.File{
-            Id:       id,
-            Ref:      ref,
-            Mft:      mft,
-            Position: position,
-            Size:     size,
-            Name:     name,
-            RunList:  runlist,
-        }
+			runlist_size := len(runlist_src)
+			runlist := make(core.RunList, runlist_size)
 
-        res_list = append(res_list, f)
+			origin := core.ClusterNumber(mfts[file.MftId].PartOrigin)
 
-        sub_map, ok := file_id_map[mft]
-        if !ok {
-            sub_map = make(map[int64]*extract.File)
-            file_id_map[mft] = sub_map
-        }
+			for j, entry := range runlist_src[1:] {
+				runlist[j] = &core.RunEntry{
+					Start: origin + entry.Start,
+					Count: entry.Count,
+					Zero:  entry.Zero,
+				}
+			}
+		}
 
-        sub_map[ref] = f
-    }
+		f := &extract.File{
+			Id:       id,
+			Ref:      ref,
+			Mft:      mft,
+			Position: position,
+			Size:     size,
+			Name:     name,
+			RunList:  runlist,
+		}
 
-    fmt.Println("\r100%                                                      ")
+		res_list = append(res_list, f)
 
-    fmt.Println("Completing directory hierarchy")
-    cnt = len(res_list)
+		sub_map, ok := file_id_map[mft]
+		if !ok {
+			sub_map = make(map[int64]*extract.File)
+			file_id_map[mft] = sub_map
+		}
 
-    writer, err := extract.MakeFileWriter(dest)
-    if err != nil {
-        return err
-    }
+		sub_map[ref] = f
+	}
 
-    defer core.DeferedCall(writer.Close)
+	fmt.Println("\r100%                                                      ")
 
-    for i, entry := range res_list {
-        fmt.Printf("\rDone: %d %%", 100*i/cnt)
+	fmt.Println("Completing directory hierarchy")
+	cnt = len(res_list)
 
-        mft := entry.Mft
+	writer, err := extract.MakeFileWriter(dest)
+	if err != nil {
+		return err
+	}
 
-        file := files[mft][entry.Ref]
-        parent := file.Parent
+	defer core.DeferedCall(writer.Close)
 
-        if parent != 0 {
-            f, ok := file_id_map[mft][parent.GetFileIndex()]
-            if !ok {
-                fmt.Fprintln(os.Stderr, fmt.Sprintf("Parent not found for file %s", file))
+	for i, entry := range res_list {
+		fmt.Printf("\rDone: %d %%", 100*i/cnt)
 
-                continue
-            }
+		mft := entry.Mft
 
-            entry.Parent = f.Id
-        }
+		file := files[mft][entry.Ref]
+		parent := file.Parent
 
-        if err := writer.Write(entry); err != nil {
-            return err
-        }
-    }
+		if parent != 0 {
+			f, ok := file_id_map[mft][parent.GetFileIndex()]
+			if !ok {
+				fmt.Fprintln(os.Stderr, fmt.Sprintf("Parent not found for file %s", file))
 
-    fmt.Println("\r100%                                                      ")
+				continue
+			}
 
-    return nil
+			entry.Parent = f.Id
+		}
+
+		if err := writer.Write(entry); err != nil {
+			return err
+		}
+	}
+
+	fmt.Println("\r100%                                                      ")
+
+	return nil
 }
 
 func do_list_files(dir string, arg *tActionArg) error {
-    src, err := arg.GetInput()
-    if err != nil {
-        return err
-    }
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    tree, err := extract.ReadTreeFromFile(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	tree, err := extract.ReadTreeFromFile(src)
+	if err != nil {
+		return err
+	}
 
-    node_list := tree.Roots
+	node_list := tree.Roots
 
-    if dir != "" {
-        position, err := core.ToInt(dir)
-        if err != nil {
-            return err
-        }
+	if dir != "" {
+		position, err := core.ToInt(dir)
+		if err != nil {
+			return err
+		}
 
-        node, ok := tree.Positions[position]
-        if !ok {
-            return core.WrapError(fmt.Errorf("Bad position: %d", position))
-        }
+		node, ok := tree.Positions[position]
+		if !ok {
+			return core.WrapError(fmt.Errorf("Bad position: %d", position))
+		}
 
-        fmt.Println("Path:", tree.GetNodePath(node))
+		fmt.Println("Path:", tree.GetNodePath(node))
 
-        node_list = node.Children
-    }
+		node_list = node.Children
+	}
 
-    for _, node := range node_list {
-        var typ string
+	for _, node := range node_list {
+		var typ string
 
-        if node.IsDir() {
-            typ = ", Dir"
-        } else if node.IsFile() {
-            typ = ", File"
-        }
+		if node.IsDir() {
+			typ = ", Dir"
+		} else if node.IsFile() {
+			typ = ", File"
+		}
 
-        fmt.Println(fmt.Sprintf("   - %d (%s, children=%d%s)", node.File.Position, node.File.Name, len(node.Children), typ))
-    }
+		fmt.Println(fmt.Sprintf("   - %d (%s, children=%d%s)", node.File.Position, node.File.Name, len(node.Children), typ))
+	}
 
-    return nil
+	return nil
 }
 
 func do_copy_file(file int64, arg *tActionArg) error {
-    src, dest, err := arg.GetTransferFiles()
-    if err != nil {
-        return err
-    }
+	src, dest, err := arg.GetTransferFiles()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    tree, err := extract.ReadTreeFromFile(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	tree, err := extract.ReadTreeFromFile(src)
+	if err != nil {
+		return err
+	}
 
-    node, ok := tree.Positions[file]
-    if !ok {
-        return core.WrapError(fmt.Errorf("Bad position: %d", file))
-    }
+	node, ok := tree.Positions[file]
+	if !ok {
+		return core.WrapError(fmt.Errorf("Bad position: %d", file))
+	}
 
-    disk := arg.disk.GetDisk()
-    defer core.DeferedCall(disk.Close)
+	disk := arg.disk.GetDisk()
+	defer core.DeferedCall(disk.Close)
 
-    _, err = extract.SaveFile(disk, node.File, dest)
+	_, err = extract.SaveFile(disk, node.File, dest)
 
-    return err
+	return err
 }

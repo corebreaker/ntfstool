@@ -1,212 +1,234 @@
 package main
 
 import (
-    "essai/ntfstool/core"
-    "essai/ntfstool/inspect"
-    "fmt"
+	"essai/ntfstool/core"
+	"essai/ntfstool/inspect"
+	"fmt"
 )
 
 func do_fixmft(arg *tActionArg) error {
-    src, dest, err := arg.GetFiles()
-    if err != nil {
-        return err
-    }
+	src, dest, err := arg.GetFiles()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    states, err := inspect.MakeStateReader(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	states, err := inspect.MakeStateReader(src)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(states.Close)
+	defer core.DeferedCall(states.Close)
 
-    stream, err := states.MakeStream()
-    if err != nil {
-        return err
-    }
+	stream, err := states.MakeStream()
+	if err != nil {
+		return err
+	}
 
-    tables := make(map[int64]*inspect.StateMft)
-    mfts := make(map[string]*inspect.StateMft)
-    dirs := make(map[int64]*inspect.StateFileRecord)
-    files := make(map[string]map[int64]*inspect.StateFileRecord)
+	tables := make(map[int64]*inspect.StateMft)
+	mfts := make(map[string]*inspect.StateMft)
+	dirs := make(map[int64]*inspect.StateFileRecord)
+	files := make(map[string]map[int64]*inspect.StateFileRecord)
 
-    i, cnt := 0, states.GetCount()
-    res := make([]inspect.IStateRecord, 0)
+	i, cnt := 0, states.GetCount()
+	res := make([]inspect.IStateRecord, 0)
 
-    fmt.Println("Finding MFTs")
-    for state := range stream {
-        fmt.Printf("\rDone: %d %%", 100*i/cnt)
-        i++
+	fmt.Println("Finding MFTs")
+	for item := range stream {
+		fmt.Printf("\rDone: %d %%", 100*i/cnt)
+		i++
 
-        switch state.GetType() {
-        case inspect.STATE_RECORD_TYPE_FILE:
-            file_state := state.(*inspect.StateFileRecord)
-            file_pos := file_state.Position
+		state := item.Record()
 
-            attr_list := file_state.GetAttributes(core.ATTR_DATA)
-            if len(attr_list) == 0 {
-                continue
-            }
+		if err := state.GetError(); err != nil {
+			return err
+		}
 
-            data_attr := attr_list[0]
+		if state.IsNull() {
+			continue
+		}
 
-            if file_state.Name == "$MFT" {
-                current := &inspect.StateMft{
-                    StateBase: inspect.StateBase{
-                        Position: file_pos,
-                    },
-                    Header:     file_state.Header,
-                    RunList:    data_attr.RunList,
-                    PartOrigin: file_pos - int64(data_attr.RunList[0].Start*0x1000),
-                }
+		switch state.GetType() {
+		case inspect.STATE_RECORD_TYPE_FILE:
+			file_state := state.(*inspect.StateFileRecord)
+			file_pos := file_state.Position
 
-                ok, err := arg.disk.InitState(current)
-                if err != nil {
-                    return err
-                }
+			attr_list := file_state.GetAttributes(core.ATTR_DATA)
+			if len(attr_list) == 0 {
+				continue
+			}
 
-                if !ok {
-                    continue
-                }
+			data_attr := attr_list[0]
 
-                ok, err = current.IsMft(arg.disk)
-                if err != nil {
-                    return err
-                }
+			if file_state.Name == "$MFT" {
+				current := &inspect.StateMft{
+					StateBase: inspect.StateBase{
+						Position: file_pos,
+					},
+					Header:     file_state.Header,
+					RunList:    data_attr.RunList,
+					PartOrigin: file_pos - int64(data_attr.RunList[0].Start*0x1000),
+				}
 
-                if ok {
-                    res = append(res, current)
-                    files[current.GetMftId()] = make(map[int64]*inspect.StateFileRecord)
+				ok, err := arg.disk.InitState(current)
+				if err != nil {
+					return err
+				}
 
-                    for _, run := range data_attr.RunList {
-                        if run.Zero {
-                            continue
-                        }
+				if !ok {
+					continue
+				}
 
-                        pos_beg := current.PartOrigin + int64(run.Start*0x1000)
-                        pos_end := pos_beg + (run.Count * 0x1000)
+				ok, err = current.IsMft(arg.disk)
+				if err != nil {
+					return err
+				}
 
-                        for position := pos_beg; position < pos_end; position += 1024 {
-                            prev, exists := tables[position]
-                            if exists {
-                                msg := "\rWarning: MFT %s use position %d that has already used by MFT %s."
-                                fmt.Println(msg, current, position, prev)
-                            }
+				if ok {
+					res = append(res, current)
 
-                            tables[position] = current
-                            mfts[current.MftId] = current
-                        }
-                    }
-                }
-            }
+					mftid := current.GetMftId()
+					files[mftid] = make(map[int64]*inspect.StateFileRecord)
 
-            mft, found := tables[file_pos]
-            if !found {
-                continue
-            }
+					cnt := 0
 
-            file_state.SetMft(mft)
+					for _, run := range data_attr.RunList {
+						if run.Zero {
+							continue
+						}
 
-            ref := mft.GetReference(file_pos)
-            if ref == 0 {
-                fmt.Println("\rWarning: File at position %d is not in MFT %s", file_pos, mft)
+						pos_beg := current.PartOrigin + int64(run.Start*0x1000)
+						pos_end := pos_beg + (run.Count * 0x1000)
 
-                continue
-            }
+						for position := pos_beg; position < pos_end; position += 1024 {
+							prev, exists := tables[position]
+							if exists {
+								msg := "\rWarning: MFT %s use position %d that has already used by MFT %s."
+								fmt.Println(msg, current, position, prev)
+							}
 
-            file_state.Reference = ref
-            files[file_state.GetMftId()][ref.GetFileIndex()] = file_state
+							tables[position] = current
+							cnt++
+						}
+					}
 
-            if (file_state.Header.Flags & core.FFLAG_DIRECTORY) != core.FFLAG_NONE {
-                attr_list := file_state.GetAttributes(core.ATTR_INDEX_ALLOCATION)
-                if len(attr_list) == 0 {
-                    break
-                }
+					if cnt > 0 {
+						mfts[mftid] = current
+					}
+				}
 
-                for _, dir_attr := range attr_list {
-                    for _, run := range dir_attr.RunList {
-                        if run.Zero {
-                            continue
-                        }
+				res = append(res, state)
+				continue
+			}
 
-                        pos_beg := mft.PartOrigin + int64(run.Start*0x1000)
-                        pos_end := pos_beg + (run.Count * 0x1000)
+			mft, found := tables[file_pos]
+			if !found {
+				continue
+			}
 
-                        for position := pos_beg; position < pos_end; position += 0x1000 {
-                            prev, exists := dirs[position]
-                            if exists {
-                                msg := "\rWarning: File %s use position %d that has already used by file %s."
-                                fmt.Println(msg, file_state, position, prev)
-                            }
+			file_state.SetMft(mft)
 
-                            dirs[position] = file_state
-                        }
-                    }
-                }
-            }
-        }
+			ref := mft.GetReference(file_pos)
+			if ref == 0 {
+				fmt.Println("\rWarning: File at position %d is not in MFT %s", file_pos, mft)
 
-        res = append(res, state)
-    }
+				continue
+			}
 
-    fmt.Println("\r100%                                                      ")
+			file_state.Reference = ref
+			files[file_state.GetMftId()][ref.GetFileIndex()] = file_state
 
-    writer, err := inspect.MakeStateWriter(dest)
-    if err != nil {
-        return err
-    }
+			if (file_state.Header.Flags & core.FFLAG_DIRECTORY) != core.FFLAG_NONE {
+				attr_list := file_state.GetAttributes(core.ATTR_INDEX_ALLOCATION)
+				if len(attr_list) == 0 {
+					break
+				}
 
-    defer core.DeferedCall(writer.Close)
+				for _, dir_attr := range attr_list {
+					for _, run := range dir_attr.RunList {
+						if run.Zero {
+							continue
+						}
 
-    cnt = len(res)
+						pos_beg := mft.PartOrigin + int64(run.Start*0x1000)
+						pos_end := pos_beg + (run.Count * 0x1000)
 
-    fmt.Println("Finding Non-resident Directory Indexes")
-    for i, state := range res {
-        fmt.Printf("\rDone: %d %%", 100*i/cnt)
+						for position := pos_beg; position < pos_end; position += 0x1000 {
+							prev, exists := dirs[position]
+							if exists {
+								const msg = "\rWarning: File %s use position %d that has already used by file %s."
 
-        func() {
-            switch state.GetType() {
-            case inspect.STATE_RECORD_TYPE_INDEX:
-                index_state := state.(*inspect.StateIndexRecord)
+								fmt.Println(msg, file_state, position, prev)
+							}
 
-                file_state, ok := dirs[index_state.Position]
-                if !ok {
-                    return
-                }
+							dirs[position] = file_state
+						}
+					}
+				}
+			}
+		}
 
-                good_name := func(entry *inspect.StateDirEntry) bool {
-                    name := entry.Name
-                    for _, n := range file_state.Names {
-                        if name == n {
-                            return true
-                        }
-                    }
+		res = append(res, state)
+	}
 
-                    return len(file_state.Names) == 0
-                }
+	fmt.Println("\r100%                                                      ")
 
-                for _, entry := range index_state.Entries {
-                    ref := file_state.Reference
+	writer, err := inspect.MakeStateWriter(dest)
+	if err != nil {
+		return err
+	}
 
-                    if ((ref != 0) && (entry.Parent != ref)) || (!good_name(entry)) {
-                        return
-                    }
-                }
+	defer core.DeferedCall(writer.Close)
 
-                index_state.Reference = file_state.Reference
-                index_state.Parent = file_state.Parent
+	cnt = len(res)
 
-                mft := mfts[file_state.MftId]
-                index_state.SetMft(mft)
-            }
-        }()
+	fmt.Println("Finding Non-resident Directory Indexes")
+	for i, state := range res {
+		fmt.Printf("\rDone: %d %%", 100*i/cnt)
 
-        if err := writer.Write(state); err != nil {
-            return err
-        }
-    }
+		func() {
+			switch state.GetType() {
+			case inspect.STATE_RECORD_TYPE_INDEX:
+				index_state := state.(*inspect.StateIndexRecord)
 
-    fmt.Println("\r100%                                                      ")
+				file_state, ok := dirs[index_state.Position]
+				if !ok {
+					return
+				}
 
-    return nil
+				good_name := func(entry *inspect.StateDirEntry) bool {
+					name := entry.Name
+					for _, n := range file_state.Names {
+						if name == n {
+							return true
+						}
+					}
+
+					return len(file_state.Names) == 0
+				}
+
+				for _, entry := range index_state.Entries {
+					ref := file_state.Reference
+
+					if ((ref != 0) && (entry.Parent != ref)) || (!good_name(entry)) {
+						return
+					}
+				}
+
+				index_state.Reference = file_state.Reference
+				index_state.Parent = file_state.Parent
+
+				mft := mfts[file_state.MftId]
+				index_state.SetMft(mft)
+			}
+		}()
+
+		if err := writer.Write(state); err != nil {
+			return err
+		}
+	}
+
+	fmt.Println("\r100%                                                      ")
+
+	return nil
 }
