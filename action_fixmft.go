@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+
 	"essai/ntfstool/core"
 	"essai/ntfstool/inspect"
-	"fmt"
 )
 
-func do_fixmft(arg *tActionArg) error {
+func do_fixmft(verbose bool, arg *tActionArg) error {
 	src, dest, err := arg.GetFiles()
 	if err != nil {
 		return err
@@ -32,6 +34,12 @@ func do_fixmft(arg *tActionArg) error {
 
 	i, cnt := 0, states.GetCount()
 	res := make([]inspect.IStateRecord, 0)
+
+	var log bytes.Buffer
+
+	mft_collision := 0
+	pos_collision := 0
+	orpheans := 0
 
 	fmt.Println("Finding MFTs")
 	for item := range stream {
@@ -103,8 +111,12 @@ func do_fixmft(arg *tActionArg) error {
 						for position := pos_beg; position < pos_end; position += 1024 {
 							prev, exists := tables[position]
 							if exists {
-								msg := "\rWarning: MFT %s use position %d that has already used by MFT %s."
-								fmt.Println(msg, current, position, prev)
+								const msg = "  - Warning: MFT %s use position %d that has already used by MFT %s."
+
+								fmt.Fprintf(&log, msg, current, position, prev)
+								fmt.Fprintln(&log)
+
+								mft_collision++
 							}
 
 							tables[position] = current
@@ -130,7 +142,10 @@ func do_fixmft(arg *tActionArg) error {
 
 			ref := mft.GetReference(file_pos)
 			if ref == 0 {
-				fmt.Println("\rWarning: File at position %d is not in MFT %s", file_pos, mft)
+				fmt.Fprintf(&log, "  - Warning: File at position %d is not in MFT %s", file_pos, mft)
+				fmt.Fprintln(&log)
+
+				orpheans++
 
 				continue
 			}
@@ -156,9 +171,12 @@ func do_fixmft(arg *tActionArg) error {
 						for position := pos_beg; position < pos_end; position += 0x1000 {
 							prev, exists := dirs[position]
 							if exists {
-								const msg = "\rWarning: File %s use position %d that has already used by file %s."
+								const msg = "  - Warning: File %s use position %d that has already used by file %s."
 
-								fmt.Println(msg, file_state, position, prev)
+								fmt.Fprintf(&log, msg, file_state, position, prev)
+								fmt.Fprintln(&log)
+
+								pos_collision++
 							}
 
 							dirs[position] = file_state
@@ -229,6 +247,18 @@ func do_fixmft(arg *tActionArg) error {
 	}
 
 	fmt.Println("\r100%                                                      ")
+
+	fmt.Println()
+	fmt.Println("Summary:")
+	fmt.Println("  - Orpheans:           ", orpheans)
+	fmt.Println("  - MFT collisions:     ", mft_collision)
+	fmt.Println("  - Position collisions:", pos_collision)
+
+	if verbose {
+		fmt.Println()
+		fmt.Println("Details:")
+		fmt.Println(&log)
+	}
 
 	return nil
 }

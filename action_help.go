@@ -65,7 +65,7 @@ func do_help(arg *tActionArg) error {
 	fmt.Println(" 4.", prog, "in=01_base.dat out=02_records.dat complete")
 	fmt.Println(" 5.", prog, "in=02_records.dat out=03_fslist.dat fix-mft")
 	fmt.Println(" 6.", prog, "in=03_fslist.dat out=04_dir.dat make-filelist")
-	fmt.Println(" 7.", prog, "in=04_dir.dat in=04_dir.dat out=recovered.file cp=12")
+	fmt.Println(" 7.", prog, "in=04_dir.dat out=recovered.file cp=12")
 	fmt.Println()
 
 	return nil

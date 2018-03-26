@@ -1,13 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+
+	"github.com/pborman/uuid"
+
 	"essai/ntfstool/core"
 	"essai/ntfstool/extract"
 	"essai/ntfstool/inspect"
-	"fmt"
-	"os"
-
-	"github.com/pborman/uuid"
 )
 
 func do_file_count(arg *tActionArg) error {
@@ -27,7 +28,7 @@ func do_file_count(arg *tActionArg) error {
 	return nil
 }
 
-func do_mkfilelist(arg *tActionArg) error {
+func do_mkfilelist(verbose bool, arg *tActionArg) error {
 	src, dest, err := arg.GetFiles()
 	if err != nil {
 		return err
@@ -119,6 +120,10 @@ func do_mkfilelist(arg *tActionArg) error {
 	file_id_map := make(map[string]map[int64]*extract.File)
 	res_list := make([]*extract.File, 0)
 
+	var log bytes.Buffer
+
+	no_parents := 0
+
 	for i, file := range file_list {
 		fmt.Printf("\rDone: %d %%", 100*i/cnt)
 
@@ -203,7 +208,10 @@ func do_mkfilelist(arg *tActionArg) error {
 		if parent != 0 {
 			f, ok := file_id_map[mft][parent.GetFileIndex()]
 			if !ok {
-				fmt.Fprintln(os.Stderr, fmt.Sprintf("Parent not found for file %s", file))
+				fmt.Fprintf(&log, fmt.Sprintf("Parent not found for file %s", file))
+				fmt.Fprintln(&log)
+
+				no_parents++
 
 				continue
 			}
@@ -217,6 +225,15 @@ func do_mkfilelist(arg *tActionArg) error {
 	}
 
 	fmt.Println("\r100%                                                      ")
+
+	fmt.Println()
+	fmt.Println("File with no parent:", no_parents)
+
+	if verbose {
+		fmt.Println()
+		fmt.Println("Details:")
+		fmt.Println(&log)
+	}
 
 	return nil
 }
