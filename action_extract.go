@@ -7,6 +7,7 @@ import (
 	"github.com/pborman/uuid"
 
 	"essai/ntfstool/core"
+	"essai/ntfstool/core/dataio"
 	"essai/ntfstool/extract"
 	"essai/ntfstool/inspect"
 )
@@ -49,7 +50,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 	mfts := make(map[string]*inspect.StateMft)
 	names := make(map[string]map[int64]map[int64]string)
-	files := make(map[string]map[int64]*inspect.StateFileRecord)
+	files := make(map[string]map[dataio.FileIndex]*inspect.StateFileRecord)
 	file_list := make([]*inspect.StateFileRecord, 0)
 
 	i, cnt := 0, reader.GetCount()
@@ -77,12 +78,30 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 			sub_list, ok := files[id]
 			if !ok {
-				sub_list = make(map[int64]*inspect.StateFileRecord)
+				sub_list = make(map[dataio.FileIndex]*inspect.StateFileRecord)
 				files[id] = sub_list
 			}
 
 			sub_list[record.Reference.GetFileIndex()] = record
 			file_list = append(file_list, record)
+
+			/**
+
+			            name_sub_list, ok := names[id]
+						if !ok {
+							name_sub_list = make(map[int64]map[int64]string)
+							names[id] = name_sub_list
+						}
+
+						contents, ok := name_sub_list[record.Reference.GetFileIndex()]
+						if !ok {
+							contents = make(map[int64]string)
+							name_sub_list[record.Parent.GetFileIndex()] = contents
+						}
+
+			            contents[record.Reference.GetFileIndex()] = record.Name
+
+			*/
 
 		case inspect.STATE_RECORD_TYPE_INDEX:
 			sub_list, ok := names[id]
@@ -91,21 +110,23 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 				names[id] = sub_list
 			}
 
-			record := rec.(*inspect.StateIndexRecord)
+			/*
+				            record := rec.(*inspect.StateIndexRecord)
 
-			contents, ok := sub_list[record.Reference.GetFileIndex()]
-			if !ok {
-				contents = make(map[int64]string)
-				sub_list[record.Reference.GetFileIndex()] = contents
-			}
+									contents, ok := sub_list[int64(record.Reference.GetFileIndex())]
+										if !ok {
+											contents = make(map[int64]string)
+											sub_list[int64(record.Reference.GetFileIndex())] = contents
+										}
 
-			for _, file := range record.Entries {
-				if file.Header.FilenameType != 1 {
-					continue
-				}
+										for _, file := range record.Entries {
+											if file.Header.FilenameType != 1 {
+												continue
+											}
 
-				contents[file.Header.FileReferenceNumber.GetFileIndex()] = file.Name
-			}
+											contents[int64(file.Header.FileReferenceNumber.GetFileIndex())] = file.Name
+										}
+			*/
 
 		case inspect.STATE_RECORD_TYPE_MFT:
 			mfts[id] = rec.(*inspect.StateMft)
@@ -117,7 +138,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 	fmt.Println("Make list")
 	cnt = len(file_list)
 
-	file_id_map := make(map[string]map[int64]*extract.File)
+	file_id_map := make(map[string]map[dataio.FileIndex]*extract.File)
 	res_list := make([]*extract.File, 0)
 
 	var log bytes.Buffer
@@ -143,15 +164,16 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 		mft := file.MftId
 
-		ref := file.Reference.GetFileIndex()
-		name := names[mft][file.Parent.GetFileIndex()][ref]
+		ref := file.Reference
+		//name := names[mft][file.Parent.GetFileIndex()][ref]
+		name := file.Name
 
 		runlist := core.RunList(nil)
-		if (file.Header.Flags & core.FFLAG_DIRECTORY) != core.FFLAG_NONE {
+		if file.IsDir() {
 			runlist_src := attr_data.GetRunList()
 
 			runlist_size := len(runlist_src)
-			runlist := make(core.RunList, runlist_size)
+			runlist = make(core.RunList, runlist_size)
 
 			origin := core.ClusterNumber(mfts[file.MftId].PartOrigin)
 
@@ -166,7 +188,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 		f := &extract.File{
 			Id:       id,
-			Ref:      ref,
+			FileRef:  ref,
 			Mft:      mft,
 			Position: position,
 			Size:     size,
@@ -178,11 +200,11 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 		sub_map, ok := file_id_map[mft]
 		if !ok {
-			sub_map = make(map[int64]*extract.File)
+			sub_map = make(map[dataio.FileIndex]*extract.File)
 			file_id_map[mft] = sub_map
 		}
 
-		sub_map[ref] = f
+		sub_map[ref.GetFileIndex()] = f
 	}
 
 	fmt.Println("\r100%                                                      ")
@@ -202,7 +224,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 		mft := entry.Mft
 
-		file := files[mft][entry.Ref]
+		file := files[mft][entry.FileRef.GetFileIndex()]
 		parent := file.Parent
 
 		if parent != 0 {
@@ -217,6 +239,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 			}
 
 			entry.Parent = f.Id
+			entry.ParentRef = f.FileRef
 		}
 
 		if err := writer.Write(entry); err != nil {

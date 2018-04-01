@@ -26,10 +26,8 @@ func Scan(name string, destination *os.File) error {
 
 	for _, position := range positions[0] {
 		err := out.Write(&StateFileRecord{
-			StateFile: StateFile{
-				StateBase: StateBase{
-					Position: position,
-				},
+			StateBase: StateBase{
+				Position: position,
 			},
 		})
 
@@ -40,10 +38,8 @@ func Scan(name string, destination *os.File) error {
 
 	for _, position := range positions[1] {
 		err := out.Write(&StateIndexRecord{
-			StateFile: StateFile{
-				StateBase: StateBase{
-					Position: position,
-				},
+			StateBase: StateBase{
+				Position: position,
 			},
 		})
 

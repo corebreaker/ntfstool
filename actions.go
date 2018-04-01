@@ -14,27 +14,34 @@ import (
 var (
 	actions = []iActionDef{
 		tDefaultActionDef{handler: do_help, name: "help"},
-		tStringActionDef{handler: do_count, name: "count"},
+
+		// Commands using input/output files
 		tStringActionDef{handler: do_set_source, name: "in", next: true},
 		tStringActionDef{handler: do_set_destination, name: "out", next: true},
-		tDefaultActionDef{handler: do_scan, name: "scan"},
 		tDefaultActionDef{handler: do_file_count, name: "file-count"},
 		tDefaultActionDef{handler: do_state_count, name: "state-count"},
 		tIntegerActionDef{handler: do_show, name: "show"},
 		tIntegerActionDef{handler: do_position, name: "at"},
 		tStringActionDef{handler: do_show_mft, name: "show-mft"},
-		tBoolActionDef{handler: do_check, name: "check"},
 		tDefaultActionDef{handler: do_listnames, name: "list-names"},
+		tDefaultActionDef{handler: do_shownames, name: "show-names"},
+		tDefaultActionDef{handler: do_scan, name: "scan"},
+		tBoolActionDef{handler: do_check, name: "check"},
 		tDefaultActionDef{handler: do_complete, name: "complete"},
+
+		// Commands to use partition with the help of input/output files
 		tConfigActionDef{handler: do_open_disk},
 		tStringActionDef{handler: do_list_files, name: "ls"},
 		tIntegerActionDef{handler: do_copy_file, name: "cp"},
 		tDefaultActionDef{handler: do_fillinfo, name: "fill"},
 		tBoolActionDef{handler: do_fixmft, name: "fix-mft"},
 		tBoolActionDef{handler: do_mkfilelist, name: "make-filelist"},
+
+		// Command to explore partition
 		tIntegerActionDef{handler: do_start, name: "start", next: true, index: true},
 		tIntegerActionDef{handler: do_mft, name: "mft", next: true, index: true},
-		tDefaultActionDef{handler: do_names, name: "names"},
+		tStringActionDef{handler: do_count, name: "count"},
+		tDefaultActionDef{handler: do_mftnames, name: "mft-names"},
 		tDefaultActionDef{handler: do_find, name: "find"},
 		tIntegerActionDef{handler: do_record, name: "record", index: true},
 		tIntegerActionDef{handler: do_sector, name: "sector", index: true},
@@ -50,7 +57,6 @@ func do_open_disk(arg *tActionArg) error {
 	}
 
 	arg.disk = disk
-
 	return nil
 }
 
@@ -136,7 +142,7 @@ func do_count(pattern string, arg *tActionArg) error {
 	return nil
 }
 
-func do_names(arg *tActionArg) error {
+func do_mftnames(arg *tActionArg) error {
 	fmt.Println()
 	fmt.Println("Names:")
 	for i := ntfs.FileReferenceNumber(0); true; i++ {
@@ -193,7 +199,11 @@ func do_sector(offset int64, arg *tActionArg) error {
 	var sector [512]byte
 
 	num := (offset + 511) / 512
-	if err := arg.disk.GetDisk().ReadSector(num, sector[:]); err != nil {
+
+	disk := arg.disk.GetDisk()
+	defer ntfs.DeferedCall(disk.Close)
+
+	if err := disk.ReadSector(num, sector[:]); err != nil {
 		return err
 	}
 
@@ -210,7 +220,11 @@ func do_cluster(offset int64, arg *tActionArg) error {
 	var cluster [4096]byte
 
 	num := (offset + 4095) / 4096
-	if err := arg.disk.GetDisk().ReadCluster(num, cluster[:]); err != nil {
+
+	disk := arg.disk.GetDisk()
+	defer ntfs.DeferedCall(disk.Close)
+
+	if err := disk.ReadCluster(num, cluster[:]); err != nil {
 		return err
 	}
 

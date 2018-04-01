@@ -24,7 +24,7 @@ type IFile interface {
 type tNoneFile struct {
 	datafile.BaseDataRecord
 
-	zero bool
+	Zero bool
 }
 
 func (self *tNoneFile) IsRoot() bool   { return false }
@@ -33,24 +33,30 @@ func (self *tNoneFile) IsDir() bool    { return false }
 func (self *tNoneFile) GetFile() *File { return nil }
 
 type File struct {
-	tNoneFile
+	datafile.BaseDataRecord
 
-	Ref      int64
-	Id       string
-	Mft      string
-	Parent   string
-	Position int64
-	Size     uint64
-	Name     string
-	RunList  core.RunList
+	FileRef   core.FileReferenceNumber
+	ParentRef core.FileReferenceNumber
+	Id        string
+	Mft       string
+	Parent    string
+	Position  int64
+	Size      uint64
+	Name      string
+	RunList   core.RunList
 }
 
-func (self *File) IsRoot() bool            { return len(self.Parent) == 0 }
-func (self *File) IsFile() bool            { return len(self.RunList) > 0 }
-func (self *File) IsDir() bool             { return len(self.RunList) == 0 }
-func (self *File) GetEncodingCode() string { return "N" }
-func (self *File) GetFile() *File          { return self }
-func (self *File) Print()                  { core.PrintStruct(self) }
+func (self *File) IsRoot() bool                     { return len(self.Parent) == 0 }
+func (self *File) IsFile() bool                     { return len(self.RunList) > 0 }
+func (self *File) IsDir() bool                      { return len(self.RunList) == 0 }
+func (self *File) HasName() bool                    { return true }
+func (self *File) GetEncodingCode() string          { return "N" }
+func (self *File) GetFile() *File                   { return self }
+func (self *File) GetPosition() int64               { return self.Position }
+func (self *File) GetName() string                  { return self.Name }
+func (self *File) GetLabel() string                 { return "Files Nodes" }
+func (self *File) GetParentIndex() dataio.FileIndex { return self.ParentRef.GetFileIndex() }
+func (self *File) Print()                           { core.PrintStruct(self) }
 
 type tFileError struct {
 	tNoneFile
@@ -76,7 +82,7 @@ type tFileStreamError struct {
 }
 
 func (*tFileStreamError) Index() int       { return -1 }
-func (se *tFileStreamError) Record() IFile { return se.Record() }
+func (se *tFileStreamError) Record() IFile { return se.record }
 
 type tFileStreamRecord struct {
 	tFileStreamError

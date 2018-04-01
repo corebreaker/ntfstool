@@ -85,7 +85,7 @@ func (self *tActionArg) GetInput() (*os.File, error) {
 }
 
 func (self *tActionArg) GetOutput() (*os.File, error) {
-	if self.source == nil {
+	if self.dest == nil {
 		return nil, ntfs.WrapError(fmt.Errorf("No destination file specified"))
 	}
 

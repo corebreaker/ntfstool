@@ -1,145 +1,155 @@
 package inspect
 
 import (
-    "essai/ntfstool/core"
+	"essai/ntfstool/core"
+	"essai/ntfstool/core/dataio"
 )
 
 type NtfsDisk struct {
-    data   *core.DiskIO
-    mft_io *core.DiskIO
-    mft_rl core.RunList
+	disk      *core.DiskIO
+	mft_rl    core.RunList
+	mft_shift int64
 }
 
 func (self *NtfsDisk) fill_runlist() error {
-    var mft core.FileRecord
+	var mft core.FileRecord
 
-    if err := self.mft_io.ReadStruct(0, &mft); err != nil {
-        return err
-    }
+	if err := self.disk.ReadStruct(self.mft_shift, &mft); err != nil {
+		return err
+	}
 
-    if mft.Type != core.RECTYP_FILE {
-        return nil
-    }
+	if mft.Type != core.RECTYP_FILE {
+		return nil
+	}
 
-    data_attrs := mft.GetAttributeFilteredList(core.ATTR_DATA)
-    if (data_attrs == nil) || (len(data_attrs) == 0) {
-        return nil
-    }
+	data_attrs := mft.GetAttributeFilteredList(core.ATTR_DATA)
+	if (data_attrs == nil) || (len(data_attrs) == 0) {
+		return nil
+	}
 
-    data_attr, err := mft.MakeAttributeFromOffset(data_attrs[0])
-    if err != nil {
-        return err
-    }
+	data_attr, err := mft.MakeAttributeFromOffset(data_attrs[0])
+	if err != nil {
+		return err
+	}
 
-    self.mft_rl = data_attr.GetRunList()
+	self.mft_rl = data_attr.GetRunList()
 
-    return nil
+	return nil
 }
 
 func (self *NtfsDisk) get_file_sector(index int64) int64 {
-    if self.mft_rl != nil {
-        start := int64(0)
-        for _, run := range self.mft_rl {
-            end := start + (run.Count * 4)
+	if (self.mft_rl != nil) && (index >= 0) {
+		start := int64(0)
+		for _, run := range self.mft_rl {
+			end := start + (run.Count * 4)
 
-            if (start <= index) && (index < end) {
-                return (int64(run.Start) * 8) + ((index - start) * 2)
-            }
+			if (start <= index) && (index < end) {
+				return (int64(run.Start) * 8) + ((index - start) * 2)
+			}
 
-            start = end
-        }
-    }
+			start = end
+		}
+	}
 
-    return index * 2
+	return index * 2
+}
+
+func (self *NtfsDisk) FindIndex(position int64) dataio.FileIndex {
+	fpos := dataio.FileIndex((position + 1023) / 1024)
+	if self.mft_rl == nil {
+		return fpos
+	}
+
+	vidx := dataio.FileIndex(0)
+	for _, run := range self.mft_rl {
+		start, end := dataio.FileIndex(run.Start)*4, dataio.FileIndex(run.GetNext())*4
+
+		if (start <= fpos) && (fpos < end) {
+			return vidx + (fpos - start)
+		}
+
+		vidx += dataio.FileIndex(run.Count) * 4
+	}
+
+	return dataio.FileIndex(0)
 }
 
 func (self *NtfsDisk) GetDisk() *core.DiskIO {
-    return self.data.Shift(0)
+	return self.disk.Shift(0)
 }
 
 func (self *NtfsDisk) SetStart(start int64) error {
-    shift := self.mft_io.GetOffset() - self.data.GetOffset()
+	self.disk.SetOffset(start)
 
-    self.data.SetOffset(start)
-    self.mft_io.SetOffset(start + shift)
-
-    return self.fill_runlist()
+	return self.fill_runlist()
 }
 
 func (self *NtfsDisk) SetMftShift(shift int64) error {
-    self.mft_io.SetOffset(self.data.GetOffset() + shift)
+	self.mft_shift = shift
 
-    return self.fill_runlist()
+	return self.fill_runlist()
 }
 
 func (self *NtfsDisk) ReadRecordHeader(index int64, header *core.RecordHeader) error {
-    return self.mft_io.ReadStruct(index*2, header)
+	return self.disk.ReadStruct(self.mft_shift+(index*2), header)
 }
 
 func (self *NtfsDisk) ReadRecordHeaderFromRef(ref core.FileReferenceNumber, header *core.RecordHeader) error {
-    return self.ReadRecordHeader(ref.GetFileIndex(), header)
+	return self.ReadRecordHeader(int64(ref.GetFileIndex()), header)
 }
 
 func (self *NtfsDisk) ReadFileRecord(index int64, record *core.FileRecord) error {
-    return self.data.ReadStruct(self.get_file_sector(index), record)
+	return self.disk.ReadStruct(self.get_file_sector(index), record)
 }
 
 func (self *NtfsDisk) ReadFileRecordFromRef(ref core.FileReferenceNumber, record *core.FileRecord) error {
-    return self.ReadFileRecord(ref.GetFileIndex(), record)
+	return self.ReadFileRecord(int64(ref.GetFileIndex()), record)
 }
 
 func (self *NtfsDisk) GetAttributeValue(desc *core.AttributeDesc, read bool) (*core.AttributeValue, error) {
-    if read {
-        return desc.GetValue(self.data)
-    }
+	if read {
+		return desc.GetValue(self.disk)
+	}
 
-    return desc.GetValue(nil)
+	return desc.GetValue(nil)
 }
 
 func (self *NtfsDisk) GetFileRecordFilename(record *core.FileRecord) (string, error) {
-    return record.GetFilename(self.data)
+	return record.GetFilename(self.disk)
 }
 
 func (self *NtfsDisk) InitState(state IStateRecord) (bool, error) {
-    return state.Init(self.data)
+	return state.Init(self.disk)
 }
 
 func (self *NtfsDisk) Close() error {
-    if self != nil {
-        defer func() {
-            self.mft_io = nil
-            self.data = nil
-        }()
+	if self != nil {
+		defer func() {
+			self.disk = nil
+		}()
 
-        if self.mft_io != nil {
-            self.mft_io.Close()
-        }
+		if self.disk != nil {
+			return self.disk.Close()
+		}
+	}
 
-        if self.data != nil {
-            return self.data.Close()
-        }
-    }
-
-    return nil
+	return nil
 }
 
 func OpenNtfsDisk(name string, mft_shift int64) (*NtfsDisk, error) {
-    data, err := core.OpenDisk(name)
-    if err != nil {
-        return nil, err
-    }
+	data, err := core.OpenDisk(name)
+	if err != nil {
+		return nil, err
+	}
 
-    res := &NtfsDisk{
-        data: data,
-    }
+	res := &NtfsDisk{
+		disk:      data,
+		mft_shift: mft_shift,
+	}
 
-    if mft_shift == 0 {
-        res.mft_io = data.Shift(0)
-    } else {
-        if err := res.SetMftShift(mft_shift); err != nil {
-            return nil, err
-        }
-    }
+	if err := res.fill_runlist(); err != nil {
+		return nil, err
+	}
 
-    return res, nil
+	return res, nil
 }

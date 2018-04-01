@@ -47,6 +47,7 @@ type DirectoryIndex struct {
 
 type IndexBlockHeader struct {
 	RecordHeader
+
 	IndexBlockVcn  ClusterNumber
 	DirectoryIndex DirectoryIndex
 }
@@ -153,6 +154,7 @@ func (self *DirectoryEntryHeader) DecodeFilename(data []byte) string {
 
 type DirectoryEntryExtendedHeader struct {
 	DirectoryEntryHeader
+
 	Vcn ClusterNumber // VCN in IndexAllocation of earlier entries
 }
 
@@ -166,6 +168,7 @@ func (self *DirectoryEntryExtendedHeader) MakeEntry(block_offset, entry_offset u
 
 type DirectoryEntry struct {
 	DirectoryEntryExtendedHeader
+
 	Index       *DirectoryIndex
 	Name        string
 	BlockOffset uint

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"essai/ntfstool/core"
+	"essai/ntfstool/core/dataio"
 )
 
 type tDataContainer struct {
@@ -32,6 +33,15 @@ func (self *tDataContainer) check() error {
 
 func (self *tDataContainer) GetCount() int {
 	return int(self.desc.Count)
+}
+
+func (self *tDataContainer) GetCounts() map[dataio.IDataRecord]int {
+	res := make(map[dataio.IDataRecord]int)
+	for _, k := range self.format.headers {
+		res[k] = int(self.desc.Counts[k.GetEncodingCode()])
+	}
+
+	return res
 }
 
 func (self *tDataContainer) GetFormatName() string {

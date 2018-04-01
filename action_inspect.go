@@ -23,7 +23,12 @@ func do_state_count(arg *tActionArg) error {
 
 	defer core.DeferedCall(states.Close)
 
-	fmt.Println("Count=", states.GetCount())
+	for rec_type, count := range states.GetCounts() {
+		fmt.Println(rec_type.GetLabel(), "=", count)
+	}
+
+	fmt.Println()
+	fmt.Println("Total Record Count =", states.GetCount())
 
 	return nil
 }
@@ -248,39 +253,39 @@ func do_complete(arg *tActionArg) error {
 				return nil
 			}
 
-			parent := core.FileReferenceNumber(0)
-			fname := ""
+				parent := core.FileReferenceNumber(0)
+				fname := ""
 
-			r := record.(*inspect.StateFileRecord)
-			for _, attr := range r.Attributes {
-				if (attr.Header.NonResident == core.BOOL_FALSE) && (attr.Header.AttributeType == core.ATTR_FILE_NAME) {
-					desc, err := r.Header.MakeAttributeFromHeader(&attr.Header)
-					if err != nil {
-						return err
-					}
+				r := record.(*inspect.StateFileRecord)
+				for _, attr := range r.Attributes {
+					if (attr.Header.NonResident == core.BOOL_FALSE) && (attr.Header.AttributeType == core.ATTR_FILE_NAME) {
+						desc, err := r.Header.MakeAttributeFromHeader(&attr.Header)
+						if err != nil {
+							return err
+						}
 
-					attr_val, err := desc.GetValue(nil)
-					if err != nil {
-						return err
-					}
+						attr_val, err := desc.GetValue(nil)
+						if err != nil {
+							return err
+						}
 
-					name := attr_val.GetFilename()
+						name := attr_val.GetFilename()
 
-					if attr_val.IsLongName() {
-						fname = name
-						parent = attr_val.GetParent()
-					} else {
-						if fname == "" {
+						if attr_val.IsLongName() {
 							fname = name
-						}
-
-						if parent == 0 {
 							parent = attr_val.GetParent()
-						}
-					}
+						} else {
+							if fname == "" {
+								fname = name
+							}
 
-					r.Names = append(r.Names, name)
-				}
+							if parent == 0 {
+								parent = attr_val.GetParent()
+							}
+						}
+
+						r.Names = append(r.Names, name)
+					}
 			}
 
 			r.Parent = parent
@@ -299,6 +304,43 @@ func do_complete(arg *tActionArg) error {
 	}
 
 	fmt.Println("\r100 %")
+
+	return nil
+}
+
+func do_shownames(arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	reader, err := datafile.MakeDataReader(src, "")
+	if err != nil {
+		return err
+	}
+
+	defer core.DeferedCall(reader.Close)
+
+	stream, err := reader.MakeStream()
+	if err != nil {
+		return err
+	}
+
+	defer core.DeferedCall(stream.Close)
+
+	fmt.Println("Result")
+	for item := range stream {
+		rec := item.Record()
+		if !rec.HasName() {
+			continue
+		}
+
+		fmt.Fprintln(
+			os.Stderr,
+			fmt.Sprintf("   %06d - %s", item.Index(), rec),
+		)
+	}
 
 	return nil
 }
@@ -332,6 +374,7 @@ func do_listnames(arg *tActionArg) error {
 		i++
 
 		record := item.Record()
+		record.GetName()
 		if err := record.GetError(); err != nil {
 			return err
 		}
@@ -347,7 +390,7 @@ func do_listnames(arg *tActionArg) error {
 		r := record.(*inspect.StateFileRecord)
 
 		f_type := "File"
-		if (r.Header.Flags & core.FFLAG_DIRECTORY) != core.FFLAG_NONE {
+		if r.IsDir() {
 			f_type = "Dir"
 		}
 

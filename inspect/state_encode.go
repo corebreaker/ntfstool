@@ -44,6 +44,8 @@ type tFileRecord struct {
 	BytesAllocated      uint32
 	BaseFileRecord      uint64
 	NextAttributeNumber uint32
+	Reserved            uint32
+	MftRecordNumber     uint32
 	Data                core.FileRecordData
 }
 
@@ -57,6 +59,8 @@ func (self *tFileRecord) from(src *core.FileRecord) *tFileRecord {
 		BytesAllocated:      src.BytesAllocated,
 		BaseFileRecord:      src.BaseFileRecord,
 		NextAttributeNumber: uint32(src.NextAttributeNumber),
+		Reserved:            uint32(src.Reserved),
+		MftRecordNumber:     src.MftRecordNumber,
 		Data:                src.Data,
 	}
 
@@ -75,6 +79,8 @@ func (self *tFileRecord) to(dest *core.FileRecord) *core.FileRecord {
 		BytesAllocated:      self.BytesAllocated,
 		BaseFileRecord:      self.BaseFileRecord,
 		NextAttributeNumber: uint16(self.NextAttributeNumber),
+		Reserved:            uint16(self.Reserved),
+		MftRecordNumber:     self.MftRecordNumber,
 		Data:                self.Data,
 	}
 
@@ -131,35 +137,6 @@ func (self *tIndexBlockHeader) to(dest *core.IndexBlockHeader) *core.IndexBlockH
 	}
 
 	self.tRecordHeader.to(&dest.RecordHeader)
-
-	return dest
-}
-
-type tStateFile struct {
-	tStateBase
-
-	Parent    core.FileReferenceNumber
-	Reference core.FileReferenceNumber
-}
-
-func (self *tStateFile) from(src *StateFile) *tStateFile {
-	*self = tStateFile{
-		Parent:    src.Parent,
-		Reference: src.Reference,
-	}
-
-	self.tStateBase.from(&src.StateBase)
-
-	return self
-}
-
-func (self *tStateFile) to(dest *StateFile) *StateFile {
-	*dest = StateFile{
-		Parent:    self.Parent,
-		Reference: self.Reference,
-	}
-
-	self.tStateBase.to(&dest.StateBase)
 
 	return dest
 }
@@ -364,10 +341,11 @@ func (self *tStateDirEntry) to(dest *StateDirEntry) *StateDirEntry {
 }
 
 type tStateIndexRecord struct {
-	tStateFile
+	tStateBase
 
-	Header  tIndexBlockHeader
-	Entries []*tStateDirEntry
+	RecordRef core.FileReferenceNumber
+	Header    tIndexBlockHeader
+	Entries   []*tStateDirEntry
 }
 
 func (self *tStateIndexRecord) from(src *StateIndexRecord) *tStateIndexRecord {
@@ -376,8 +354,12 @@ func (self *tStateIndexRecord) from(src *StateIndexRecord) *tStateIndexRecord {
 		entries[i] = new(tStateDirEntry).from(entry)
 	}
 
-	self.Entries = entries
-	self.tStateFile.from(&src.StateFile)
+	*self = tStateIndexRecord{
+		RecordRef: src.RecordRef,
+		Entries:   entries,
+	}
+
+	self.tStateBase.from(&src.StateBase)
 	self.Header.from(&src.Header)
 
 	return self
@@ -389,15 +371,19 @@ func (self *tStateIndexRecord) to(dest *StateIndexRecord) *StateIndexRecord {
 		entries[i] = entry.to(new(StateDirEntry))
 	}
 
-	dest.Entries = entries
-	self.tStateFile.to(&dest.StateFile)
+	*dest = StateIndexRecord{
+		RecordRef: self.RecordRef,
+		Entries:   entries,
+	}
+
+	self.tStateBase.to(&dest.StateBase)
 	self.Header.to(&dest.Header)
 
 	return dest
 }
 
 type tStateFileRecord struct {
-	tStateFile
+	tStateBase
 
 	Header     tFileRecord
 	Name       string
@@ -418,7 +404,7 @@ func (self *tStateFileRecord) from(src *StateFileRecord) *tStateFileRecord {
 	}
 
 	self.Header.from(&src.Header)
-	self.tStateFile.from(&src.StateFile)
+	self.tStateBase.from(&src.StateBase)
 
 	return self
 }
@@ -436,7 +422,7 @@ func (self *tStateFileRecord) to(dest *StateFileRecord) *StateFileRecord {
 	}
 
 	self.Header.to(&dest.Header)
-	self.tStateFile.to(&dest.StateFile)
+	self.tStateBase.to(&dest.StateBase)
 
 	return dest
 }

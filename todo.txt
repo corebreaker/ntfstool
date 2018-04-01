@@ -1,1 +1,3 @@
 - reader/writer d'une StateCollection à streamiser
+- MFT détectées sur les bords de la partition
+- lecture en dehors des limites de la partition

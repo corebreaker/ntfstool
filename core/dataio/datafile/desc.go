@@ -15,6 +15,7 @@ type tFileIndex struct {
 
 type tFileDescRecord struct {
 	Count    uint32
+	Counts   map[string]uint32
 	Headers  []int32
 	Indexes  []tFileIndex
 	Sep      string
@@ -25,6 +26,7 @@ type tFileDesc struct {
 	BaseDataRecord
 
 	Count    uint32
+	Counts   map[string]uint32
 	Headers  []int16
 	Indexes  []tFileIndex
 	Position int64
@@ -44,6 +46,7 @@ func (d *tFileDesc) MarshalBinary() (data []byte, err error) {
 
 	res, err := protobuf.Encode(&tFileDescRecord{
 		Count:    d.Count,
+		Counts:   d.Counts,
 		Headers:  headers,
 		Indexes:  d.Indexes,
 		Sep:      "FILE-END",
@@ -72,6 +75,7 @@ func (d *tFileDesc) UnmarshalBinary(data []byte) error {
 
 	*d = tFileDesc{
 		Count:    rec.Count,
+		Counts:   rec.Counts,
 		Headers:  headers,
 		Indexes:  rec.Indexes,
 		Position: rec.Position,

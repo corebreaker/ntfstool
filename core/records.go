@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+
+	"essai/ntfstool/core/dataio"
 )
 
 type RecordType uint32
@@ -124,11 +126,21 @@ type FileRecord struct {
 	BytesAllocated      uint32
 	BaseFileRecord      uint64
 	NextAttributeNumber uint16
+	Reserved            uint16
+	MftRecordNumber     uint32
 	Data                FileRecordData
+}
+
+func (self *FileRecord) IsDir() bool {
+	return (self.Flags & FFLAG_DIRECTORY) != FFLAG_NONE
 }
 
 func (self *FileRecord) PrefixSize() int {
 	return 1024 - len(self.Data)
+}
+
+func (self *FileRecord) FileReferenceNumber() FileReferenceNumber {
+	return MakeFileReferenceNumber(self.SequenceNumber, dataio.FileIndex(self.MftRecordNumber))
 }
 
 func (self *FileRecord) make_attribute(offset int, header *AttributeHeader) (*AttributeDesc, error) {

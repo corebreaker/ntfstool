@@ -1,9 +1,10 @@
 package extract
 
 import (
-	"essai/ntfstool/core"
 	"fmt"
 	"os"
+
+	"essai/ntfstool/core"
 )
 
 type Node struct {
