@@ -3,8 +3,6 @@ package core
 import (
 	"fmt"
 	"time"
-
-	"essai/ntfstool/core/dataio"
 )
 
 type Usn uint64
@@ -31,32 +29,6 @@ type Byte byte
 
 func (self Byte) String() string {
 	return fmt.Sprintf("%02x", byte(self))
-}
-
-type FileReferenceNumber uint64
-
-func (frn FileReferenceNumber) IsNull() bool {
-	return frn == 0
-}
-
-func (frn FileReferenceNumber) GetSequenceNumber() uint16 {
-	return uint16(frn >> 48)
-}
-
-func (frn FileReferenceNumber) GetFileIndex() dataio.FileIndex {
-	return dataio.FileIndex(frn & 0xFFFFFFFFFFFF)
-}
-
-func (frn FileReferenceNumber) String() string {
-	if frn.IsNull() {
-		return "{NO FILE}"
-	}
-
-	return fmt.Sprintf("%04X / %s", frn.GetSequenceNumber(), frn.GetFileIndex())
-}
-
-func MakeFileReferenceNumber(seq uint16, index dataio.FileIndex) FileReferenceNumber {
-	return FileReferenceNumber((uint64(seq) << 48) | uint64(index))
 }
 
 type ClusterNumber uint64
@@ -93,4 +65,10 @@ func (self Timestamp) String() string {
 	}
 
 	return fmt.Sprint(self.Time())
+}
+
+type DataZone []byte
+
+func (dz DataZone) String() string {
+	return fmt.Sprintf("<Data:%d>", len(dz))
 }

@@ -1,11 +1,11 @@
-package datafile
+package file
 
 import (
 	"fmt"
 	"os"
 
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio"
+	"essai/ntfstool/core/data"
 )
 
 type tDataContainer struct {
@@ -35,8 +35,12 @@ func (self *tDataContainer) GetCount() int {
 	return int(self.desc.Count)
 }
 
-func (self *tDataContainer) GetCounts() map[dataio.IDataRecord]int {
-	res := make(map[dataio.IDataRecord]int)
+func (self *tDataContainer) GetIndexCount() int {
+	return len(self.desc.Indexes)
+}
+
+func (self *tDataContainer) GetCounts() map[data.IDataRecord]int {
+	res := make(map[data.IDataRecord]int)
 	for _, k := range self.format.headers {
 		res[k] = int(self.desc.Counts[k.GetEncodingCode()])
 	}
@@ -46,4 +50,14 @@ func (self *tDataContainer) GetCounts() map[dataio.IDataRecord]int {
 
 func (self *tDataContainer) GetFormatName() string {
 	return self.format.name
+}
+
+func (self *tDataContainer) Offsets() []int64 {
+	res := make([]int64, len(self.desc.Indexes))
+
+	for i, v := range self.desc.Indexes {
+		res[i] = v.Physical
+	}
+
+	return res
 }

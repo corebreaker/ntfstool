@@ -1,4 +1,4 @@
-package datafile
+package file
 
 import (
 	"encoding/binary"
@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio"
-	"essai/ntfstool/core/dataio/codec"
+	"essai/ntfstool/core/data"
+	"essai/ntfstool/core/data/codec"
 )
 
 type DataWriter struct {
@@ -16,7 +16,7 @@ type DataWriter struct {
 	writer *codec.Encoder
 }
 
-func (self *DataWriter) write_record(rec dataio.IDataRecord) error {
+func (self *DataWriter) write_record(rec data.IDataRecord) error {
 	_, err := self.writer.Encode(rec)
 
 	return err
@@ -61,16 +61,15 @@ func (self *DataWriter) Close() (err error) {
 	return core.WrapError(binary.Write(self.file, binary.BigEndian, self.desc.Position))
 }
 
-func (self *DataWriter) Write(rec dataio.IDataRecord) (err error) {
-	defer func() {
+func (self *DataWriter) Write(rec data.IDataRecord) (err error) {
+	defer core.Recover(func(err error) {
 		if err == nil {
-			err = core.Recover()
-		}
+			code := rec.GetEncodingCode()
 
-		if err == nil {
 			self.desc.Count++
+			self.desc.Counts[code]++
 		}
-	}()
+	})
 
 	if err := self.check(); err != nil {
 		return err
@@ -108,6 +107,9 @@ func MakeDataWriter(file *os.File, format_name string) (*DataWriter, error) {
 
 	res := &DataWriter{
 		tDataContainer: tDataContainer{
+			desc: tFileDesc{
+				Counts: make(map[string]uint32),
+			},
 			file:   file,
 			format: format,
 		},

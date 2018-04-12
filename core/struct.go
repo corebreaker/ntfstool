@@ -18,9 +18,7 @@ func StructSize(value interface{}) int {
 }
 
 func is_nil(v reflect.Value) bool {
-	defer func() {
-		recover()
-	}()
+	defer DiscardPanic()
 
 	return (!v.IsValid()) || v.IsNil()
 }
@@ -55,8 +53,20 @@ func print_value(indent, prefix string, w io.Writer, v reflect.Value) {
 
 			f := t.Field(i)
 			val := v.Field(i)
+
+			ftyp := f.Type
+			if ftyp.Kind() == reflect.Interface {
+				val = val.Elem()
+				ftyp = val.Type()
+			}
+
+			switch ftyp.Kind() {
+			case reflect.Ptr, reflect.Interface:
+				ftyp = ftyp.Elem()
+			}
+
 			switch {
-			case f.Anonymous || (f.Type.Kind() == reflect.Struct):
+			case f.Anonymous || (ftyp.Kind() == reflect.Struct):
 				fmt.Fprintln(w, indent, prefix+f.Name, ":")
 				print_value(indent+padding+"   ", "", w, val)
 

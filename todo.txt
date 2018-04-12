@@ -1,3 +1,7 @@
 - reader/writer d'une StateCollection à streamiser
 - MFT détectées sur les bords de la partition
 - lecture en dehors des limites de la partition
+- les commandes head/tail/positions doivent pouvoir s'appliquer à tous les formats de fiochers
+- pour windows, permettre des entrées MFT qui n'est pas aligné sur les clusters (ou les sectteur)
+    -> et avoir un PartOrigin qui décale la partition NTFS à cheval sur un cluster de la partition physique
+- dans fix-mft, traiter les STATE_RECORD_TYPE_INDEX

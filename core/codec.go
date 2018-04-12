@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"reflect"
 
-	"essai/ntfstool/core/dataio"
+	"essai/ntfstool/core/data"
 )
 
-var recordType = reflect.TypeOf((*dataio.IDataRecord)(nil)).Elem()
+var recordType = reflect.TypeOf((*data.IDataRecord)(nil)).Elem()
 
 type IEncoder interface {
 	Encode(interface{}) error
 }
 
-func WriteRecord(encoder IEncoder, record dataio.IDataRecord) error {
+func WriteRecord(encoder IEncoder, record data.IDataRecord) error {
 	return encoder.Encode(record)
 }
 
@@ -21,7 +21,7 @@ type IDecoder interface {
 	Decode() (interface{}, error)
 }
 
-func ReadRecord(decoder IDecoder) (dataio.IDataRecord, error) {
+func ReadRecord(decoder IDecoder) (data.IDataRecord, error) {
 	val, err := decoder.Decode()
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func ReadRecord(decoder IDecoder) (dataio.IDataRecord, error) {
 		}
 	}
 
-	res, ok := val.(dataio.IDataRecord)
+	res, ok := val.(data.IDataRecord)
 	if !ok {
 		return nil, WrapError(fmt.Errorf("`%s` is not a data record", reflect.TypeOf(val)))
 	}

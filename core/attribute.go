@@ -5,7 +5,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	sysio "io"
 	"reflect"
+
+	"essai/ntfstool/core/data"
 )
 
 type tAttributeTypeInfo struct {
@@ -340,8 +343,12 @@ type IndexRootAttribute struct {
 	DirectoryIndex        DirectoryIndex
 }
 
+func (*IndexRootAttribute) IndexType() IndexType {
+	return INDEX_TYPE_ROOT
+}
+
 type FilenameAttribute struct {
-	DirectoryFileReferenceNumber FileReferenceNumber
+	DirectoryFileReferenceNumber data.FileRef
 	CreationTime                 Timestamp
 	ChangeTime                   Timestamp
 	LastWriteTime                Timestamp
@@ -352,7 +359,7 @@ type FilenameAttribute struct {
 	AlignmentOrReserved          uint32
 	NameLength                   uint8
 	NameType                     NameType
-	// Name                      [1]Char
+	// Name                      []Char
 }
 
 type ReparsePointAttribute struct {
@@ -449,7 +456,7 @@ func (self *AttributeDesc) GetValue(io *DiskIO) (*AttributeValue, error) {
 	var size int
 
 	switch {
-	case self.Header.NonResident == BOOL_FALSE:
+	case !self.Header.NonResident.Value():
 		attr := self.ResidentDesc()
 		start := self.Index + int(attr.ValueOffset)
 		end := start + int(attr.ValueLength)
@@ -469,7 +476,7 @@ func (self *AttributeDesc) GetValue(io *DiskIO) (*AttributeValue, error) {
 		run_size := 1
 		lcn, vcn := int64(0), int64(0)
 
-		for i := 0; run_datas[i] != 0; i += run_size {
+		for i := 0; (run_datas[i] != 0) && (vcn < int64(size)); i += run_size {
 			first := lcn == 0
 			infos := run_datas[i]
 			offs_sz, cnt_sz := int(infos>>4), int(infos&0xF)
@@ -483,6 +490,10 @@ func (self *AttributeDesc) GetValue(io *DiskIO) (*AttributeValue, error) {
 				if delta > 0 {
 					lcn += delta
 					if err := io.ReadClusters(lcn, cnt, data[vcn:]); err != nil {
+						if IsEof(err) {
+							break
+						}
+
 						return nil, err
 					}
 				}
@@ -531,6 +542,10 @@ func (self *AttributeDesc) GetValue(io *DiskIO) (*AttributeValue, error) {
 
 	if value != nil {
 		if err := binary.Read(buffer, binary.LittleEndian, value); err != nil {
+			if err == sysio.EOF {
+				return nil, nil
+			}
+
 			return nil, WrapError(err)
 		}
 	}
@@ -560,7 +575,6 @@ func (self *AttributeDesc) GetRunList() RunList {
 		run_datas := self.Record.Data[(self.Index + int(attr.RunArrayOffset)):]
 		run_size := 1
 		lcn := ClusterNumber(0)
-		last := (*RunEntry)(nil)
 
 		for i := 0; run_datas[i] != 0; i += run_size {
 			infos := run_datas[i]
@@ -570,23 +584,17 @@ func (self *AttributeDesc) GetRunList() RunList {
 			start := i + 1
 			cnt := DecodeInt(run_datas[start:(start + cnt_sz)])
 
-			if offs_sz <= 0 {
-				continue
-			}
-
 			start += cnt_sz
 			delta := ClusterNumber(DecodeInt(run_datas[start:(start + offs_sz)]))
 			if delta > 0 {
 				lcn += delta
-				last = &RunEntry{
-					Start: lcn,
-					Count: cnt,
-				}
 
-				res = append(res, last)
-			} else if last != nil {
 				res = append(res, &RunEntry{
-					Start: last.GetNext(),
+					Count: cnt,
+					Start: lcn,
+				})
+			} else {
+				res = append(res, &RunEntry{
 					Count: cnt,
 					Zero:  true,
 				})
@@ -602,8 +610,8 @@ func (self *AttributeDesc) GetRunList() RunList {
 type AttributeValue struct {
 	Desc     *AttributeDesc
 	FirstLCN ClusterNumber
-	Content  []byte
-	Data     []byte
+	Content  DataZone
+	Data     DataZone
 	Size     int
 	Value    interface{}
 }
@@ -637,10 +645,10 @@ func (self *AttributeValue) IsLongName() bool {
 	return (value.NameType & NAME_TYPE_LONG) != 0
 }
 
-func (self *AttributeValue) GetParent() FileReferenceNumber {
+func (self *AttributeValue) GetParent() data.FileRef {
 	value := self.get_filename_attribute()
 	if value == nil {
-		return FileReferenceNumber(0)
+		return data.FileRef(0)
 	}
 
 	return value.DirectoryFileReferenceNumber
@@ -658,6 +666,10 @@ func (self *AttributeValue) GetFirstEntry() (*DirectoryEntry, error) {
 			return nil, WrapError(errors.New("It's not an Index attribute"))
 		}
 
+		if !ia_attr.Type.IsGood() {
+			return nil, nil
+		}
+
 		index = &ia_attr.DirectoryIndex
 	}
 
@@ -667,6 +679,10 @@ func (self *AttributeValue) GetFirstEntry() (*DirectoryEntry, error) {
 
 	if err := Read(buffer, &res.DirectoryEntryHeader); err != nil {
 		return nil, WrapError(err)
+	}
+
+	if res.Length == 0 {
+		return nil, nil
 	}
 
 	if (res.Flags & DEFLAG_HAS_TRAILING) != DEFLAG_NONE {
@@ -688,6 +704,10 @@ func (self *AttributeValue) GetFirstEntry() (*DirectoryEntry, error) {
 }
 
 func (self *AttributeValue) GetNextEntry(entry *DirectoryEntry) (*DirectoryEntry, error) {
+	if entry == nil {
+		return nil, nil
+	}
+
 	block_offset, entry_offset, index := entry.BlockOffset, entry.EntryOffset, entry.Index
 
 	_, ok := self.Value.(*IndexRootAttribute)
@@ -701,6 +721,10 @@ func (self *AttributeValue) GetNextEntry(entry *DirectoryEntry) (*DirectoryEntry
 		ia_attr, ok := self.Value.(*IndexBlockHeader)
 		if !ok {
 			return nil, WrapError(errors.New("It's not an Index attribute"))
+		}
+
+		if !ia_attr.Type.IsGood() {
+			return nil, nil
 		}
 
 		if (entry.Flags & DEFLAG_LAST_ENTRY) != DEFLAG_NONE {
@@ -726,6 +750,10 @@ func (self *AttributeValue) GetNextEntry(entry *DirectoryEntry) (*DirectoryEntry
 				return nil, WrapError(err)
 			}
 
+			if !ia_attr.Type.IsGood() {
+				return nil, nil
+			}
+
 			struct_offset := bias - uint(StructSize(ia_attr.DirectoryIndex))
 			index_offset := block_offset + struct_offset
 
@@ -741,6 +769,10 @@ func (self *AttributeValue) GetNextEntry(entry *DirectoryEntry) (*DirectoryEntry
 
 	if err := Read(buffer, &res.DirectoryEntryHeader); err != nil {
 		return nil, WrapError(err)
+	}
+
+	if res.Length == 0 {
+		return nil, nil
 	}
 
 	if (res.Flags & DEFLAG_HAS_TRAILING) != DEFLAG_NONE {
@@ -761,7 +793,7 @@ func (self *AttributeValue) GetNextEntry(entry *DirectoryEntry) (*DirectoryEntry
 	return res, nil
 }
 
-func (self *AttributeValue) GetIndexBlock(entry_position uint) (interface{}, error) {
+func (self *AttributeValue) GetIndexBlock(entry_position uint) (IndexValue, error) {
 	index_root, ok := self.Value.(*IndexRootAttribute)
 	if ok {
 		return index_root, nil
@@ -791,7 +823,7 @@ func (self *AttributeValue) GetIndexBlock(entry_position uint) (interface{}, err
 	return block, nil
 }
 
-func (self *AttributeValue) GetIndexBlockFromEntry(entry *DirectoryEntry) (interface{}, error) {
+func (self *AttributeValue) GetIndexBlockFromEntry(entry *DirectoryEntry) (IndexValue, error) {
 	index_root, ok := self.Value.(*IndexRootAttribute)
 	if ok {
 		return index_root, nil

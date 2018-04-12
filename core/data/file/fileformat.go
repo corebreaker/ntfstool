@@ -1,11 +1,11 @@
-package datafile
+package file
 
 import (
 	"fmt"
 
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio"
-	"essai/ntfstool/core/dataio/codec"
+	"essai/ntfstool/core/data"
+	"essai/ntfstool/core/data/codec"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 type tFileFormat struct {
 	name      string
 	signature []byte
-	headers   []dataio.IDataRecord
+	headers   []data.IDataRecord
 	registry  *codec.Registry
 }
 
@@ -29,8 +29,8 @@ var (
 	file_signatures map[string]*tFileFormat = make(map[string]*tFileFormat)
 )
 
-func RegisterFileFormat(name, signature string, headers ...dataio.IDataRecord) {
-	var common_headers []dataio.IDataRecord
+func RegisterFileFormat(name, signature string, headers ...data.IDataRecord) {
+	var common_headers []data.IDataRecord
 	var registry *codec.Registry
 
 	if name != COMMON_DATA_FILEFORMAT_NAME {
@@ -47,7 +47,7 @@ func RegisterFileFormat(name, signature string, headers ...dataio.IDataRecord) {
 	}
 
 	sz := len(common_headers)
-	res_headers := make([]dataio.IDataRecord, sz+len(headers))
+	res_headers := make([]data.IDataRecord, sz+len(headers))
 	copy(res_headers, common_headers)
 	copy(res_headers[sz:], headers)
 

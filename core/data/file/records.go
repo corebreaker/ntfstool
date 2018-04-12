@@ -1,22 +1,22 @@
-package datafile
+package file
 
 import (
 	"fmt"
 
-	"essai/ntfstool/core/dataio"
+	"essai/ntfstool/core/data"
 )
 
 type BaseDataRecord struct{}
 
-func (*BaseDataRecord) IsNull() bool                     { return false }
-func (*BaseDataRecord) HasName() bool                    { return false }
-func (*BaseDataRecord) GetError() error                  { return nil }
-func (*BaseDataRecord) GetPosition() int64               { return 0 }
-func (*BaseDataRecord) GetEncodingCode() string          { return "" }
-func (*BaseDataRecord) String() string                   { return "{NONE}" }
-func (*BaseDataRecord) GetName() string                  { return "" }
-func (*BaseDataRecord) GetLabel() string                 { return "Other Records" }
-func (*BaseDataRecord) GetParentIndex() dataio.FileIndex { return 0 }
+func (*BaseDataRecord) IsNull() bool            { return false }
+func (*BaseDataRecord) HasName() bool           { return false }
+func (*BaseDataRecord) GetError() error         { return nil }
+func (*BaseDataRecord) GetPosition() int64      { return 0 }
+func (*BaseDataRecord) GetEncodingCode() string { return "" }
+func (*BaseDataRecord) String() string          { return "{NONE}" }
+func (*BaseDataRecord) GetName() string         { return "" }
+func (*BaseDataRecord) GetLabel() string        { return "Other Records" }
+func (*BaseDataRecord) GetParent() data.FileRef { return 0 }
 
 type tNullRecord struct {
 	BaseDataRecord

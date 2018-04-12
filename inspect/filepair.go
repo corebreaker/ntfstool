@@ -1,21 +1,23 @@
 package inspect
 
-import "essai/ntfstool/core"
+import (
+	"essai/ntfstool/core/data"
+)
 
 type FilePair struct {
-    Parent core.FileReferenceNumber
-    Name   string
+	Parent data.FileRef
+	Name   string
 }
 
 type FileFrequencies map[FilePair]uint
 
-func (self FileFrequencies) Add(parent core.FileReferenceNumber, name string) bool {
-    key := FilePair{
-        Parent: parent,
-        Name:   name,
-    }
+func (self FileFrequencies) Add(parent data.FileRef, name string) bool {
+	key := FilePair{
+		Parent: parent,
+		Name:   name,
+	}
 
-    self[key]++
+	self[key]++
 
-    return self[key] == 2
+	return self[key] == 2
 }

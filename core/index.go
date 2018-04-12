@@ -1,6 +1,10 @@
 package core
 
-import "fmt"
+import (
+	"fmt"
+
+	"essai/ntfstool/core/data"
+)
 
 type DirFlag uint32
 
@@ -38,6 +42,34 @@ const (
 	DEFLAG_LAST_ENTRY
 )
 
+type IndexType uint8
+
+func (self IndexType) String() string {
+	res, ok := index_types[self]
+	if !ok {
+		return "NONE"
+	}
+
+	return res
+}
+
+const (
+	INDEX_TYPE_NONE IndexType = iota
+	INDEX_TYPE_ROOT
+	INDEX_TYPE_BLOCK
+)
+
+var (
+	index_types = map[IndexType]string{
+		INDEX_TYPE_ROOT:  "ROOT",
+		INDEX_TYPE_BLOCK: "BLOCK",
+	}
+)
+
+type IndexValue interface {
+	IndexType() IndexType
+}
+
 type DirectoryIndex struct {
 	EntriesOffset    uint32
 	IndexBlockLength uint32
@@ -50,6 +82,10 @@ type IndexBlockHeader struct {
 
 	IndexBlockVcn  ClusterNumber
 	DirectoryIndex DirectoryIndex
+}
+
+func (*IndexBlockHeader) IndexType() IndexType {
+	return INDEX_TYPE_BLOCK
 }
 
 func (self *IndexBlockHeader) PrefixSize() int {
@@ -93,11 +129,11 @@ func (self *IndexBlockHeader) Entries(data []byte) (map[int]*DirectoryEntryExten
 }
 
 type DirectoryEntryHeader struct {
-	FileReferenceNumber FileReferenceNumber
+	FileReferenceNumber data.FileRef
 	Length              uint16
 	AttributeLength     uint16
 	Flags               DirEntryFlag
-	ParentFileRefNum    FileReferenceNumber
+	ParentFileRefNum    data.FileRef
 	CreationTime        Timestamp
 	LastModifiedTime    Timestamp
 	MFTRecordChangeTime Timestamp

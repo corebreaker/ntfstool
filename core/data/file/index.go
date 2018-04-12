@@ -1,4 +1,4 @@
-package datafile
+package file
 
 type tIndex struct {
 	start  int64

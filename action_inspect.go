@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio/datafile"
+	datafile "essai/ntfstool/core/data/file"
 	"essai/ntfstool/inspect"
 )
 
@@ -97,6 +97,7 @@ func do_fillinfo(arg *tActionArg) error {
 			if idx_ok {
 				idx_good++
 			}
+
 			if err := writer.Write(state); err != nil {
 				return nil
 			}
@@ -200,110 +201,6 @@ func do_check(verbose bool, arg *tActionArg) error {
 	if cnt == 0 {
 		fmt.Println("No problem encountered")
 	}
-
-	return nil
-}
-
-func do_complete(arg *tActionArg) error {
-	src, dest, err := arg.GetFiles()
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Reading")
-	states, err := inspect.MakeStateReader(src)
-	if err != nil {
-		return err
-	}
-
-	defer core.DeferedCall(states.Close)
-
-	stream, err := states.MakeStream()
-	if err != nil {
-		return err
-	}
-
-	defer core.DeferedCall(stream.Close)
-
-	writer, err := inspect.MakeStateWriter(dest)
-	if err != nil {
-		return err
-	}
-
-	defer core.DeferedCall(writer.Close)
-
-	i, sz := 0, states.GetCount()
-
-	fmt.Println("Completing")
-	for item := range stream {
-		fmt.Printf("\r%d %%", i*100/sz)
-		i++
-
-		record := item.Record()
-		if err := record.GetError(); err != nil {
-			return err
-		}
-
-		if record.IsNull() {
-			continue
-		}
-
-		err := func() error {
-			if record.GetType() != inspect.STATE_RECORD_TYPE_FILE {
-				return nil
-			}
-
-				parent := core.FileReferenceNumber(0)
-				fname := ""
-
-				r := record.(*inspect.StateFileRecord)
-				for _, attr := range r.Attributes {
-					if (attr.Header.NonResident == core.BOOL_FALSE) && (attr.Header.AttributeType == core.ATTR_FILE_NAME) {
-						desc, err := r.Header.MakeAttributeFromHeader(&attr.Header)
-						if err != nil {
-							return err
-						}
-
-						attr_val, err := desc.GetValue(nil)
-						if err != nil {
-							return err
-						}
-
-						name := attr_val.GetFilename()
-
-						if attr_val.IsLongName() {
-							fname = name
-							parent = attr_val.GetParent()
-						} else {
-							if fname == "" {
-								fname = name
-							}
-
-							if parent == 0 {
-								parent = attr_val.GetParent()
-							}
-						}
-
-						r.Names = append(r.Names, name)
-					}
-			}
-
-			r.Parent = parent
-			r.Name = fname
-
-			return nil
-		}()
-
-		if err != nil {
-			return err
-		}
-
-		if err := writer.Write(record); err != nil {
-			return err
-		}
-	}
-
-	fmt.Println("\r100 %")
 
 	return nil
 }
@@ -457,6 +354,125 @@ func do_show(index int64, arg *tActionArg) error {
 	fmt.Println()
 	fmt.Println("Result:")
 	record.Print()
+
+	return nil
+}
+
+func do_head(index int64, arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, "")
+	if err != nil {
+		return err
+	}
+
+	defer core.DeferedCall(records.Close)
+
+	str, err := records.MakeStream()
+	if err != nil {
+		return err
+	}
+
+	defer core.DeferedCall(str.Close)
+
+	if index <= 0 {
+		index = 10
+	}
+
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
+
+	fmt.Println()
+	fmt.Println("List:")
+	for i := int64(0); i < index; i++ {
+		item := <-str
+
+		fmt.Println(">>", item.Index(), "(", item.Offset(), ")")
+		item.Record().Print()
+		fmt.Println("------------------------------------------------------------------------------")
+		fmt.Println()
+	}
+
+	return nil
+}
+
+func do_tail(index int64, arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, "")
+	if err != nil {
+		return err
+	}
+
+	defer core.DeferedCall(records.Close)
+
+	if index <= 0 {
+		index = 10
+	}
+
+	str, err := records.MakeStreamFrom(int64(records.GetCount()) - index)
+	if err != nil {
+		return err
+	}
+
+	defer core.DeferedCall(str.Close)
+
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
+
+	fmt.Println()
+	fmt.Println("List from", index, ":")
+	for item := range str {
+		fmt.Println(">>", item.Index(), "(", item.Offset(), ")")
+		item.Record().Print()
+		fmt.Println("------------------------------------------------------------------------------")
+		fmt.Println()
+	}
+
+	return nil
+}
+
+func do_offsets(index int64, arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, "")
+	if err != nil {
+		return err
+	}
+
+	defer core.DeferedCall(records.Close)
+
+	if index <= 0 {
+		index = 10
+	}
+
+	offsets := records.Offsets()
+
+	lim := int64(len(offsets) - 1)
+	if index > lim {
+		index = lim
+	}
+
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
+
+	fmt.Println()
+	fmt.Println("List:")
+	for i := int64(0); i < index; i++ {
+		fmt.Println("  -", i+1, ":", offsets[i])
+	}
 
 	return nil
 }

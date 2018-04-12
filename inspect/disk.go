@@ -2,7 +2,7 @@ package inspect
 
 import (
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio"
+	"essai/ntfstool/core/data"
 )
 
 type NtfsDisk struct {
@@ -14,7 +14,7 @@ type NtfsDisk struct {
 func (self *NtfsDisk) fill_runlist() error {
 	var mft core.FileRecord
 
-	if err := self.disk.ReadStruct(self.mft_shift, &mft); err != nil {
+	if err := self.disk.ReadStruct((self.mft_shift+511)/512, &mft); err != nil {
 		return err
 	}
 
@@ -38,7 +38,11 @@ func (self *NtfsDisk) fill_runlist() error {
 }
 
 func (self *NtfsDisk) get_file_sector(index int64) int64 {
-	if (self.mft_rl != nil) && (index >= 0) {
+	if index == 0 {
+		return (self.mft_shift + 511) / 512
+	}
+
+	if self.mft_rl != nil {
 		start := int64(0)
 		for _, run := range self.mft_rl {
 			end := start + (run.Count * 4)
@@ -54,24 +58,24 @@ func (self *NtfsDisk) get_file_sector(index int64) int64 {
 	return index * 2
 }
 
-func (self *NtfsDisk) FindIndex(position int64) dataio.FileIndex {
-	fpos := dataio.FileIndex((position + 1023) / 1024)
+func (self *NtfsDisk) FindIndex(position int64) data.FileIndex {
+	fpos := data.FileIndex((position + 1023) / 1024)
 	if self.mft_rl == nil {
 		return fpos
 	}
 
-	vidx := dataio.FileIndex(0)
+	vidx := data.FileIndex(0)
 	for _, run := range self.mft_rl {
-		start, end := dataio.FileIndex(run.Start)*4, dataio.FileIndex(run.GetNext())*4
+		start, end := data.FileIndex(run.Start)*4, data.FileIndex(run.GetNext())*4
 
 		if (start <= fpos) && (fpos < end) {
 			return vidx + (fpos - start)
 		}
 
-		vidx += dataio.FileIndex(run.Count) * 4
+		vidx += data.FileIndex(run.Count) * 4
 	}
 
-	return dataio.FileIndex(0)
+	return data.FileIndex(0)
 }
 
 func (self *NtfsDisk) GetDisk() *core.DiskIO {
@@ -91,10 +95,10 @@ func (self *NtfsDisk) SetMftShift(shift int64) error {
 }
 
 func (self *NtfsDisk) ReadRecordHeader(index int64, header *core.RecordHeader) error {
-	return self.disk.ReadStruct(self.mft_shift+(index*2), header)
+	return self.disk.ReadStruct(((self.mft_shift+511)/512)+(index*2), header)
 }
 
-func (self *NtfsDisk) ReadRecordHeaderFromRef(ref core.FileReferenceNumber, header *core.RecordHeader) error {
+func (self *NtfsDisk) ReadRecordHeaderFromRef(ref data.FileRef, header *core.RecordHeader) error {
 	return self.ReadRecordHeader(int64(ref.GetFileIndex()), header)
 }
 
@@ -102,7 +106,7 @@ func (self *NtfsDisk) ReadFileRecord(index int64, record *core.FileRecord) error
 	return self.disk.ReadStruct(self.get_file_sector(index), record)
 }
 
-func (self *NtfsDisk) ReadFileRecordFromRef(ref core.FileReferenceNumber, record *core.FileRecord) error {
+func (self *NtfsDisk) ReadFileRecordFromRef(ref data.FileRef, record *core.FileRecord) error {
 	return self.ReadFileRecord(int64(ref.GetFileIndex()), record)
 }
 

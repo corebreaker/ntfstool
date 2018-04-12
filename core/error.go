@@ -73,18 +73,38 @@ func wrap_err(err error) *tError {
 	return res
 }
 
-func Recover() error {
+func Recover(h func(error)) {
 	z_err := recover()
 	if z_err == nil {
-		return nil
+		h(nil)
+
+		return
 	}
 
 	err, ok := z_err.(error)
 	if !ok {
-		return WrapError(fmt.Errorf("%v", err))
+		h(WrapError(fmt.Errorf("%s", err)))
+
+		return
 	}
 
-	return EnsureWrapped(err)
+	h(EnsureWrapped(err))
+}
+
+func OnError(h func(error)) {
+	z_err := recover()
+	if z_err == nil {
+		return
+	}
+
+	err, ok := z_err.(error)
+	if !ok {
+		h(WrapError(fmt.Errorf("%s", err)))
+
+		return
+	}
+
+	h(EnsureWrapped(err))
 }
 
 func IsWrapped(err error) bool {
@@ -103,7 +123,7 @@ func GetSource(err error) error {
 		return err
 	}
 
-	return t_err.source
+	return GetSource(t_err.source)
 }
 
 func EnsureWrapped(err error) error {
@@ -140,15 +160,7 @@ func AddErrorInfo(err error, format string, args ...interface{}) error {
 }
 
 func IsEof(err error) bool {
-	res := err == io.EOF
-	if !res {
-		t_err, ok := err.(*tError)
-		if ok {
-			res = IsEof(t_err.source)
-		}
-	}
-
-	return res
+	return GetSource(err) == io.EOF
 }
 
 func PrintError(err error) {

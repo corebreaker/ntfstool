@@ -7,11 +7,10 @@ import (
 	"sort"
 
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio"
-	"essai/ntfstool/core/dataio/datafile"
+	"essai/ntfstool/core/data"
+	datafile "essai/ntfstool/core/data/file"
 
 	"github.com/DeDiS/protobuf"
-	"github.com/pborman/uuid"
 )
 
 const STATE_FORMAT_NAME = "States"
@@ -27,7 +26,7 @@ const (
 )
 
 type IStateRecord interface {
-	dataio.IDataRecord
+	data.IDataRecord
 
 	GetType() StateRecordType
 	GetHeader() *core.RecordHeader
@@ -83,22 +82,22 @@ type StateFileRecord struct {
 	StateBase
 
 	Header     core.FileRecord
-	Reference  core.FileReferenceNumber
-	Parent     core.FileReferenceNumber
+	Reference  data.FileRef
+	Parent     data.FileRef
 	Name       string
 	Names      []string
 	Attributes []*StateAttribute
 }
 
-func (self *StateFileRecord) GetEncodingCode() string          { return "F" }
-func (self *StateFileRecord) GetLabel() string                 { return "MFT File Records" }
-func (self *StateFileRecord) GetType() StateRecordType         { return STATE_RECORD_TYPE_FILE }
-func (self *StateFileRecord) GetHeader() *core.RecordHeader    { return &self.Header.RecordHeader }
-func (self *StateFileRecord) HasName() bool                    { return true }
-func (self *StateFileRecord) GetName() string                  { return self.Name }
-func (self *StateFileRecord) IsDir() bool                      { return self.Header.IsDir() }
-func (self *StateFileRecord) GetParentIndex() dataio.FileIndex { return self.Parent.GetFileIndex() }
-func (self *StateFileRecord) Print()                           { fmt.Println("[FILE]"); core.PrintStruct(self) }
+func (self *StateFileRecord) GetEncodingCode() string       { return "F" }
+func (self *StateFileRecord) GetLabel() string              { return "MFT File Records" }
+func (self *StateFileRecord) GetType() StateRecordType      { return STATE_RECORD_TYPE_FILE }
+func (self *StateFileRecord) GetHeader() *core.RecordHeader { return &self.Header.RecordHeader }
+func (self *StateFileRecord) HasName() bool                 { return true }
+func (self *StateFileRecord) GetName() string               { return self.Name }
+func (self *StateFileRecord) IsDir() bool                   { return self.Header.IsDir() }
+func (self *StateFileRecord) GetParent() data.FileRef       { return self.Parent }
+func (self *StateFileRecord) Print()                        { fmt.Println("[FILE]"); core.PrintStruct(self) }
 
 func (self *StateFileRecord) Init(disk *core.DiskIO) (bool, error) {
 	disk.SetOffset(self.Position)
@@ -166,20 +165,18 @@ func (self *StateFileRecord) Init(disk *core.DiskIO) (bool, error) {
 }
 
 func (self *StateFileRecord) GetAttributes(attr core.AttributeType, others ...core.AttributeType) []*StateAttribute {
-	filter := core.MakeAttributeTypeFilter(attr, others)
+	list := makeAttributeList(attr, others)
 
-	res := make([]*StateAttribute, 0)
 	for _, attr := range self.Attributes {
-		if filter[attr.Header.AttributeType] {
-			res = append(res, attr)
-		}
+		list.add(attr)
 	}
 
-	return res
+	return list.sort()
 }
 
 func (self *StateFileRecord) String() string {
-	msg := "{%s at %d [MFT:%s] [REF:%s] [Parent:%s]}"
+	const msg = "{%s at %d [MFT:%s] [REF:%s] [Parent:%s]}"
+
 	return fmt.Sprintf(msg, self.Name, self.Position, self.MftId, self.Reference, self.Parent)
 }
 
@@ -207,7 +204,7 @@ func (self *StateFileRecord) UnmarshalBinary(data []byte) error {
 type StateDirEntry struct {
 	BasePosition   int64
 	RecordPosition int64
-	Parent         core.FileReferenceNumber
+	Parent         data.FileRef
 	Header         core.DirectoryEntryExtendedHeader
 	Name           string
 }
@@ -215,7 +212,7 @@ type StateDirEntry struct {
 type StateIndexRecord struct {
 	StateBase
 
-	RecordRef core.FileReferenceNumber
+	RecordRef data.FileRef
 	Header    core.IndexBlockHeader
 	Entries   []*StateDirEntry
 }
@@ -326,13 +323,13 @@ func (self *StateMft) Print()                        { fmt.Println("[MFT]"); cor
 
 func (self *StateMft) Init(disk *core.DiskIO) (bool, error) {
 	if self.MftId == "" {
-		self.MftId = uuid.New()
+		self.MftId = core.NewFileId()
 	}
 
 	return true, nil
 }
 
-func (self *StateMft) GetReference(file *StateFileRecord) core.FileReferenceNumber {
+func (self *StateMft) GetReference(file *StateFileRecord) data.FileRef {
 	fpos := file.Position - self.PartOrigin
 
 	vidx := int64(0)
@@ -341,16 +338,16 @@ func (self *StateMft) GetReference(file *StateFileRecord) core.FileReferenceNumb
 
 		if (start <= fpos) && (fpos < end) {
 			if uint32((vidx+(fpos-start))/1024) != file.Header.MftRecordNumber {
-				return core.FileReferenceNumber(0)
+				return data.FileRef(0)
 			}
 
-			return file.Header.FileReferenceNumber()
+			return file.Header.FileRef()
 		}
 
 		vidx += int64(run.Count) * 0x1000
 	}
 
-	return core.FileReferenceNumber(0)
+	return data.FileRef(0)
 }
 
 func (self *StateMft) IsMft() bool {
@@ -398,6 +395,7 @@ func init() {
 
 type IStateStreamItem interface {
 	Index() int
+	Offset() int64
 	Record() IStateRecord
 }
 
@@ -406,22 +404,23 @@ type tStateStreamError struct {
 }
 
 func (*tStateStreamError) Index() int              { return -1 }
+func (*tStateStreamError) Offset() int64           { return -1 }
 func (se *tStateStreamError) Record() IStateRecord { return se.record }
 
 type tStateStreamRecord struct {
 	tStateStreamError
 
+	pos   int64
 	index int
 }
 
-func (sr *tStateStreamRecord) Index() int { return sr.index }
+func (sr *tStateStreamRecord) Index() int    { return sr.index }
+func (sr *tStateStreamRecord) Offset() int64 { return sr.pos }
 
 type StateStream <-chan IStateStreamItem
 
 func (self StateStream) Close() error {
-	defer func() {
-		recover()
-	}()
+	defer core.DiscardPanic()
 
 	reflect.ValueOf(self).Close()
 
@@ -440,11 +439,12 @@ func (self *tStateStream) Close() error {
 	return nil
 }
 
-func (self *tStateStream) SendRecord(i uint, rec dataio.IDataRecord) {
+func (self *tStateStream) SendRecord(i uint, pos int64, rec data.IDataRecord) {
 	defer core.DiscardPanic()
 
 	self.stream <- &tStateStreamRecord{
 		tStateStreamError: tStateStreamError{rec.(IStateRecord)},
+		pos:               pos,
 		index:             int(i),
 	}
 }
@@ -467,7 +467,11 @@ func (self *StateReader) GetCount() int {
 	return self.reader.GetCount()
 }
 
-func (self *StateReader) GetCounts() map[dataio.IDataRecord]int {
+func (self *StateReader) GetIndexCount() int {
+	return self.reader.GetIndexCount()
+}
+
+func (self *StateReader) GetCounts() map[data.IDataRecord]int {
 	return self.reader.GetCounts()
 }
 

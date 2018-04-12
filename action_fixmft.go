@@ -36,8 +36,8 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 	pendings := make(map[int64]tPending)
 
 	i, cnt := 0, states.GetCount()
-	res := make([]inspect.IStateRecord, 0)
 
+	var records []inspect.IStateRecord
 	var log bytes.Buffer
 	var currentMft *inspect.StateMft
 
@@ -50,7 +50,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 
 		ref := mft.GetReference(state)
 		if ref.IsNull() {
-			ref = state.Header.FileReferenceNumber()
+			ref = state.Header.FileRef()
 
 			fmt.Fprintf(&log, "  - Warning: File at position %d (ref=%s) is not in MFT %s", state.Position, ref, mft)
 			fmt.Fprintln(&log)
@@ -97,7 +97,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 					return nil, err
 				}
 
-				attr_lst := rec.GetAttributeFilteredList(core.ATTR_DATA)
+				attr_lst := rec.GetAttributeFilteredList(atype)
 				if len(attr_lst) == 0 {
 					return nil, nil
 				}
@@ -161,7 +161,9 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 						disk := arg.disk.GetDisk()
 						defer disk.Close()
 
-						return disk.ReadStruct(mft_pos+4096, &record)
+						disk.SetOffset(mft_pos + 4096)
+
+						return disk.ReadStruct(0, &record)
 					}()
 
 					if err != nil {
@@ -214,11 +216,13 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 					disk := arg.disk.GetDisk()
 					defer disk.Close()
 
-					if err := disk.ReadStruct(mft_pos, &record0); err != nil {
+					disk.SetOffset(mft_pos)
+					if err := disk.ReadStruct(0, &record0); err != nil {
 						return err
 					}
 
-					if err := disk.ReadStruct(mft_pos+1024, &record1); err != nil {
+					disk.SetOffset(mft_pos + 1024)
+					if err := disk.ReadStruct(0, &record1); err != nil {
 						return err
 					}
 
@@ -245,6 +249,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 					pos0, pos1 := int64(rl0[0].Start*0x1000), int64(rl1[0].Start*0x1000)
 					origin := mft_pos - pos1
 					mft_pos += pos0 - pos1
+
 					existing_mft, ok := tables[mft_pos]
 					if ok {
 						if existing_mft.PartOrigin != origin {
@@ -262,7 +267,8 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 						disk := arg.disk.GetDisk()
 						defer disk.Close()
 
-						if err := disk.ReadStruct(mft_pos, &mft_record); err != nil {
+						disk.SetOffset(mft_pos)
+						if err := disk.ReadStruct(0, &mft_record); err != nil {
 							return nil, err
 						}
 
@@ -366,6 +372,10 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 									return false, err
 								}
 
+								if !pending.state.Reference.IsNull() {
+									records = append(records, pending.state)
+								}
+
 								delete(pendings, position)
 							}
 						}
@@ -373,9 +383,9 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 
 					currentMft = mft
 
-					res = append(res, nil)
-					copy(res[1:], res)
-					res[0] = mft
+					records = append(records, nil)
+					copy(records[1:], records)
+					records[0] = mft
 
 					return true, nil
 				}()
@@ -402,9 +412,13 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 			if err := fix(file_state, mft); err != nil {
 				return err
 			}
+
+			if file_state.Reference.IsNull() {
+				continue
+			}
 		}
 
-		res = append(res, state)
+		records = append(records, state)
 	}
 
 	fmt.Println("\r100%                                                      ")
@@ -418,6 +432,12 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 		if err := fix(p.state, p.mft); err != nil {
 			return err
 		}
+
+		if p.state.Reference.IsNull() {
+			continue
+		}
+
+		records = append(records, p.state)
 	}
 
 	fmt.Println("\r100%                                                      ")
@@ -429,10 +449,10 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 
 	defer core.DeferedCall(writer.Close)
 
-	cnt = len(res)
+	cnt = len(records)
 
 	fmt.Println("Writing")
-	for i, state := range res {
+	for i, state := range records {
 		fmt.Printf("\rDone: %d %%", 100*i/cnt)
 
 		if err := writer.Write(state); err != nil {
@@ -444,6 +464,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 
 	fmt.Println()
 	fmt.Println("Summary:")
+	fmt.Println("  - Records:            ", len(records))
 	fmt.Println("  - Orpheans:           ", orpheans)
 	fmt.Println("  - MFT collisions:     ", mft_collision)
 	fmt.Println("  - Position collisions:", pos_collision)

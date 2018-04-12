@@ -1,4 +1,4 @@
-package datafile
+package file
 
 import (
 	"encoding/binary"
@@ -7,9 +7,9 @@ import (
 	"os"
 
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio"
-	"essai/ntfstool/core/dataio/buffer"
-	"essai/ntfstool/core/dataio/codec"
+	"essai/ntfstool/core/data"
+	"essai/ntfstool/core/data/buffer"
+	"essai/ntfstool/core/data/codec"
 )
 
 type DataReader struct {
@@ -31,7 +31,7 @@ func (self *DataReader) Close() error {
 	return core.WrapError(self.file.Close())
 }
 
-func (self *DataReader) ReadRecord(position int64) (dataio.IDataRecord, error) {
+func (self *DataReader) ReadRecord(position int64) (data.IDataRecord, error) {
 	if err := self.check(); err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (self *DataReader) ReadRecord(position int64) (dataio.IDataRecord, error) {
 	return core.ReadRecord(self.buffer)
 }
 
-func (self *DataReader) GetRecordAt(index int) (dataio.IDataRecord, error) {
+func (self *DataReader) GetRecordAt(index int) (data.IDataRecord, error) {
 	if err := self.check(); err != nil {
 		return nil, err
 	}
@@ -58,10 +58,22 @@ func (self *DataReader) GetRecordAt(index int) (dataio.IDataRecord, error) {
 		return nil, core.WrapError(fmt.Errorf("Bad index %d (limit= %d)", index, self.desc.Count))
 	}
 
-	return self.ReadRecord(self.desc.Indexes[index].Logical)
+	start := self.desc.Indexes[index].Physical
+	length := int(self.desc.Indexes[index+1].Physical - start)
+
+	self.buffer.Reset()
+	if _, err := self.file.ReadAt(self.buffer.Get(length), start); err != nil {
+		return nil, core.WrapError(err)
+	}
+
+	return core.ReadRecord(self.buffer)
 }
 
-func (self *DataReader) InitStream(stream dataio.IDataStream) error {
+func (self *DataReader) InitStream(stream data.IDataStream) error {
+	return self.InitStreamFrom(stream, 0)
+}
+
+func (self *DataReader) InitStreamFrom(stream data.IDataStream, index int64) error {
 	if err := self.check(); err != nil {
 		return err
 	}
@@ -71,17 +83,26 @@ func (self *DataReader) InitStream(stream dataio.IDataStream) error {
 		return err
 	}
 
-	if _, err := file.Seek(SIGNATURE_LENGTH, os.SEEK_SET); err != nil {
-		return core.WrapError(err)
+	cnt := int64(self.desc.Count)
+	if (0 > index) || (index >= cnt) {
+		return core.WrapError(fmt.Errorf("Bad index %d (limit= %d)", index, cnt))
 	}
 
 	reader := codec.MakeDecoder(file, self.format.registry)
 	decoder := reader.ToCoreDecoder()
 
+	if _, err := file.Seek(SIGNATURE_LENGTH, os.SEEK_SET); err != nil {
+		return core.WrapError(err)
+	}
+
 	for _ = range self.desc.Headers {
 		if _, err := core.ReadRecord(decoder); err != nil {
 			return err
 		}
+	}
+
+	if _, err := file.Seek(self.desc.Indexes[index].Physical, os.SEEK_SET); err != nil {
+		return core.WrapError(err)
 	}
 
 	close_stream := func() (err error) {
@@ -110,18 +131,26 @@ func (self *DataReader) InitStream(stream dataio.IDataStream) error {
 	go func() {
 		defer core.DeferedCall(close_stream)
 
-		cnt := self.desc.Count
-		for i := uint32(0); i < cnt; i++ {
-			record, err := core.ReadRecord(decoder)
+		for i := index; i < cnt; i++ {
+			pos, err := file.Seek(0, os.SEEK_CUR)
 			if err != nil {
 				if err != io.EOF {
+					stream.SendError(core.WrapError(err))
+				}
+
+				return
+			}
+
+			record, err := core.ReadRecord(decoder)
+			if err != nil {
+				if core.GetSource(err) != io.EOF {
 					stream.SendError(err)
 				}
 
 				return
 			}
 
-			stream.SendRecord(uint(i), record)
+			stream.SendRecord(uint(i), pos, record)
 		}
 	}()
 
@@ -204,6 +233,9 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 
 	res := &DataReader{
 		tDataContainer: tDataContainer{
+			desc: tFileDesc{
+				Counts: make(map[string]uint32),
+			},
 			format: format,
 			file:   file,
 		},

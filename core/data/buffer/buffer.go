@@ -4,7 +4,7 @@ import (
 	"io"
 
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio/codec"
+	"essai/ntfstool/core/data/codec"
 )
 
 type tBufData struct {

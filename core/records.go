@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"essai/ntfstool/core/dataio"
+	"essai/ntfstool/core/data"
 )
 
 type RecordType uint32
@@ -139,8 +139,8 @@ func (self *FileRecord) PrefixSize() int {
 	return 1024 - len(self.Data)
 }
 
-func (self *FileRecord) FileReferenceNumber() FileReferenceNumber {
-	return MakeFileReferenceNumber(self.SequenceNumber, dataio.FileIndex(self.MftRecordNumber))
+func (self *FileRecord) FileRef() data.FileRef {
+	return data.MakeFileRef(self.SequenceNumber, data.FileIndex(self.MftRecordNumber))
 }
 
 func (self *FileRecord) make_attribute(offset int, header *AttributeHeader) (*AttributeDesc, error) {

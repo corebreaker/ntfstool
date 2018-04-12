@@ -8,6 +8,7 @@ import (
 	"github.com/siddontang/go/ioutil2"
 
 	ntfs "essai/ntfstool/core"
+	"essai/ntfstool/core/data"
 	"essai/ntfstool/inspect"
 )
 
@@ -21,13 +22,16 @@ var (
 		tDefaultActionDef{handler: do_file_count, name: "file-count"},
 		tDefaultActionDef{handler: do_state_count, name: "state-count"},
 		tIntegerActionDef{handler: do_show, name: "show"},
+		tIntegerActionDef{handler: do_head, name: "head"},
+		tIntegerActionDef{handler: do_tail, name: "tail"},
+		tIntegerActionDef{handler: do_offsets, name: "positions"},
+		tDefaultActionDef{handler: do_find, name: "find"},
 		tIntegerActionDef{handler: do_position, name: "at"},
 		tStringActionDef{handler: do_show_mft, name: "show-mft"},
 		tDefaultActionDef{handler: do_listnames, name: "list-names"},
 		tDefaultActionDef{handler: do_shownames, name: "show-names"},
 		tDefaultActionDef{handler: do_scan, name: "scan"},
 		tBoolActionDef{handler: do_check, name: "check"},
-		tDefaultActionDef{handler: do_complete, name: "complete"},
 
 		// Commands to use partition with the help of input/output files
 		tConfigActionDef{handler: do_open_disk},
@@ -36,13 +40,13 @@ var (
 		tDefaultActionDef{handler: do_fillinfo, name: "fill"},
 		tBoolActionDef{handler: do_fixmft, name: "fix-mft"},
 		tBoolActionDef{handler: do_mkfilelist, name: "make-filelist"},
+		tDefaultActionDef{handler: do_complete, name: "complete"},
 
 		// Command to explore partition
 		tIntegerActionDef{handler: do_start, name: "start", next: true, index: true},
 		tIntegerActionDef{handler: do_mft, name: "mft", next: true, index: true},
 		tStringActionDef{handler: do_count, name: "count"},
 		tDefaultActionDef{handler: do_mftnames, name: "mft-names"},
-		tDefaultActionDef{handler: do_find, name: "find"},
 		tIntegerActionDef{handler: do_record, name: "record", index: true},
 		tIntegerActionDef{handler: do_sector, name: "sector", index: true},
 		tIntegerActionDef{handler: do_cluster, name: "cluster", index: true},
@@ -145,7 +149,7 @@ func do_count(pattern string, arg *tActionArg) error {
 func do_mftnames(arg *tActionArg) error {
 	fmt.Println()
 	fmt.Println("Names:")
-	for i := ntfs.FileReferenceNumber(0); true; i++ {
+	for i := data.FileRef(0); true; i++ {
 		var val ntfs.RecordHeader
 
 		if err := arg.disk.ReadRecordHeaderFromRef(i, &val); err != nil {

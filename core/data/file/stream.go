@@ -1,31 +1,35 @@
-package datafile
+package file
 
 import (
 	"reflect"
 
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio"
+	"essai/ntfstool/core/data"
 )
 
 type IStreamItem interface {
 	Index() int
-	Record() dataio.IDataRecord
+	Offset() int64
+	Record() data.IDataRecord
 }
 
 type tStreamError struct {
-	record dataio.IDataRecord
+	record data.IDataRecord
 }
 
-func (*tStreamError) Index() int                    { return -1 }
-func (se *tStreamError) Record() dataio.IDataRecord { return se.record }
+func (*tStreamError) Index() int                  { return -1 }
+func (*tStreamError) Offset() int64               { return -1 }
+func (se *tStreamError) Record() data.IDataRecord { return se.record }
 
 type tStreamRecord struct {
 	tStreamError
 
 	index int
+	pos   int64
 }
 
-func (sr *tStreamRecord) Index() int { return sr.index }
+func (sr *tStreamRecord) Index() int    { return sr.index }
+func (sr *tStreamRecord) Offset() int64 { return sr.pos }
 
 type RecordStream <-chan IStreamItem
 
@@ -49,11 +53,12 @@ func (self *tStream) Close() error {
 	return nil
 }
 
-func (self *tStream) SendRecord(i uint, rec dataio.IDataRecord) {
+func (self *tStream) SendRecord(i uint, pos int64, rec data.IDataRecord) {
 	defer core.DiscardPanic()
 
 	self.stream <- &tStreamRecord{
 		tStreamError: tStreamError{rec},
+		pos:          pos,
 		index:        int(i),
 	}
 }
@@ -68,6 +73,16 @@ func (self *DataReader) MakeStream() (RecordStream, error) {
 	res := make(chan IStreamItem)
 
 	if err := self.InitStream(&tStream{res}); err != nil {
+		return nil, err
+	}
+
+	return RecordStream(res), nil
+}
+
+func (self *DataReader) MakeStreamFrom(from int64) (RecordStream, error) {
+	res := make(chan IStreamItem)
+
+	if err := self.InitStreamFrom(&tStream{res}, from); err != nil {
 		return nil, err
 	}
 

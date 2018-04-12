@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"essai/ntfstool/core"
-	"essai/ntfstool/core/dataio"
-	"essai/ntfstool/core/dataio/codec"
-	"essai/ntfstool/core/dataio/datafile"
+	"essai/ntfstool/core/data"
+	"essai/ntfstool/core/data/codec"
+	"essai/ntfstool/core/data/file"
 	"essai/ntfstool/extract"
 	"essai/ntfstool/inspect"
 )
@@ -99,7 +99,7 @@ func MakeBuffer(size int, registry *codec.Registry) *Buffer {
 }
 
 type tRecord struct {
-	datafile.BaseDataRecord
+	file.BaseDataRecord
 
 	I, J int
 }
@@ -135,12 +135,14 @@ type tStream struct {
 	cancel context.CancelFunc
 }
 
-func (s *tStream) Close() error                          { fmt.Println("End"); s.cancel(); return nil }
-func (*tStream) SendRecord(i uint, r dataio.IDataRecord) { fmt.Printf("  - %d: ", i+1); r.Print() }
-func (*tStream) SendError(err error)                     { panic(err) }
+type IDR = data.IDataRecord
+
+func (s *tStream) Close() error                    { fmt.Println("End"); s.cancel(); return nil }
+func (*tStream) SendError(err error)               { panic(err) }
+func (*tStream) SendRecord(i uint, p int64, r IDR) { fmt.Printf("  - %d (%d): ", i+1, p); r.Print() }
 
 func work() error {
-	datafile.RegisterFileFormat(
+	file.RegisterFileFormat(
 		"Example",
 		"[-- EXAMPLE --]",
 		new(tRecord),
@@ -163,7 +165,7 @@ func work() error {
 	}
 
 	if *is_record {
-		b := MakeBuffer(102400, datafile.GetRegistry("Example"))
+		b := MakeBuffer(102400, file.GetRegistry("Example"))
 		rd := func(name string) error {
 			f1, err := core.OpenFile(*filename+name, core.OPEN_RDONLY)
 			if err != nil {
@@ -216,7 +218,7 @@ func work() error {
 
 		r := filter(f)
 
-		d := codec.MakeDecoder(r, datafile.GetRegistry("Example"))
+		d := codec.MakeDecoder(r, file.GetRegistry("Example"))
 		dec := d.ToCoreDecoder()
 
 		rec, err := core.ReadRecord(dec)
@@ -236,7 +238,7 @@ func work() error {
 	}
 
 	if *is_count {
-		f, err := datafile.OpenDataReader(*filename, "Example")
+		f, err := file.OpenDataReader(*filename, "Example")
 		if err != nil {
 			return err
 		}
@@ -249,7 +251,7 @@ func work() error {
 	}
 
 	if *is_read {
-		f, err := datafile.OpenDataReader(*filename, "Example")
+		f, err := file.OpenDataReader(*filename, "Example")
 		if err != nil {
 			return err
 		}
@@ -280,7 +282,7 @@ func work() error {
 		return nil
 	}
 
-	f, err := datafile.OpenDataWriter(*filename, "Example")
+	f, err := file.OpenDataWriter(*filename, "Example")
 	if err != nil {
 		return err
 	}
@@ -310,11 +312,11 @@ func work() error {
 	}
 
 	pos := int64(len(flag.Args())) + 1
-	setPos := func(val interface{}) dataio.IDataRecord {
+	setPos := func(val interface{}) data.IDataRecord {
 		reflect.ValueOf(val).Elem().FieldByName("Position").Set(reflect.ValueOf(pos))
 		pos++
 
-		return val.(dataio.IDataRecord)
+		return val.(data.IDataRecord)
 	}
 
 	if err := f.Write(setPos(new(inspect.StateMft))); err != nil {

@@ -2,6 +2,7 @@ package inspect
 
 import (
 	"essai/ntfstool/core"
+	"essai/ntfstool/core/data"
 )
 
 type tRecordHeader struct {
@@ -142,11 +143,11 @@ func (self *tIndexBlockHeader) to(dest *core.IndexBlockHeader) *core.IndexBlockH
 }
 
 type tDirectoryEntryHeader struct {
-	FileReferenceNumber core.FileReferenceNumber
+	FileReferenceNumber data.FileRef
 	Length              uint32
 	AttributeLength     uint32
 	Flags               core.DirEntryFlag
-	ParentFileRefNum    core.FileReferenceNumber
+	ParentFileRefNum    data.FileRef
 	CreationTime        core.Timestamp
 	LastModifiedTime    core.Timestamp
 	MFTRecordChangeTime core.Timestamp
@@ -309,7 +310,7 @@ func (self *tStateAttribute) to(dest *StateAttribute) *StateAttribute {
 type tStateDirEntry struct {
 	BasePosition   int64
 	RecordPosition int64
-	Parent         core.FileReferenceNumber
+	Parent         data.FileRef
 	Header         tDirectoryEntryExtendedHeader
 	Name           string
 }
@@ -343,7 +344,7 @@ func (self *tStateDirEntry) to(dest *StateDirEntry) *StateDirEntry {
 type tStateIndexRecord struct {
 	tStateBase
 
-	RecordRef core.FileReferenceNumber
+	RecordRef data.FileRef
 	Header    tIndexBlockHeader
 	Entries   []*tStateDirEntry
 }
@@ -388,6 +389,8 @@ type tStateFileRecord struct {
 	Header     tFileRecord
 	Name       string
 	Names      []string
+	Reference  data.FileRef
+	Parent     data.FileRef
 	Attributes []*tStateAttribute
 }
 
@@ -400,6 +403,8 @@ func (self *tStateFileRecord) from(src *StateFileRecord) *tStateFileRecord {
 	*self = tStateFileRecord{
 		Name:       src.Name,
 		Names:      src.Names,
+		Reference:  src.Reference,
+		Parent:     src.Parent,
 		Attributes: attributes,
 	}
 
@@ -418,6 +423,8 @@ func (self *tStateFileRecord) to(dest *StateFileRecord) *StateFileRecord {
 	*dest = StateFileRecord{
 		Name:       self.Name,
 		Names:      self.Names,
+		Reference:  self.Reference,
+		Parent:     self.Parent,
 		Attributes: attributes,
 	}
 
