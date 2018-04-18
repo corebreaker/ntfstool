@@ -9,7 +9,7 @@ import (
 	ntfs "essai/ntfstool/core"
 )
 
-func do_file(file int64, arg *tActionArg) error {
+func do_file_num(file int64, arg *tActionArg) error {
 	var record ntfs.FileRecord
 
 	if err := arg.disk.ReadFileRecord(file, &record); err != nil {
@@ -26,7 +26,14 @@ func do_file(file int64, arg *tActionArg) error {
 		return nil
 	}
 
-	_, ok := arg.GetExt("raw")
+	_, ok := arg.GetExt("data")
+	if ok {
+		fmt.Println()
+		fmt.Println("Data:")
+		ntfs.PrintBytes(record.Data[:])
+	}
+
+	_, ok = arg.GetExt("raw")
 	if ok {
 		return nil
 	}

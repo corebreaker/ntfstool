@@ -16,9 +16,12 @@ type IFile interface {
 	data.IDataRecord
 
 	GetFile() *File
+	GetId() string
 	IsRoot() bool
 	IsFile() bool
 	IsDir() bool
+
+	setParentIndex(*Index)
 }
 
 type tNoneFile struct {
@@ -27,43 +30,12 @@ type tNoneFile struct {
 	Zero bool
 }
 
-func (self *tNoneFile) IsRoot() bool   { return false }
-func (self *tNoneFile) IsFile() bool   { return false }
-func (self *tNoneFile) IsDir() bool    { return false }
-func (self *tNoneFile) GetFile() *File { return nil }
-
-type File struct {
-	datafile.BaseDataRecord
-
-	FileRef   data.FileRef
-	ParentRef data.FileRef
-	Id        string
-	Mft       string
-	Parent    string
-	ParentIdx int64
-	Position  int64
-	Size      uint64
-	Name      string
-	RunList   core.RunList
-}
-
-func (self *File) IsRoot() bool            { return len(self.Parent) == 0 }
-func (self *File) IsFile() bool            { return len(self.RunList) > 0 }
-func (self *File) IsDir() bool             { return len(self.RunList) == 0 }
-func (self *File) HasName() bool           { return true }
-func (self *File) GetEncodingCode() string { return "N" }
-func (self *File) GetFile() *File          { return self }
-func (self *File) GetPosition() int64      { return self.Position }
-func (self *File) GetName() string         { return self.Name }
-func (self *File) GetLabel() string        { return "Files Nodes" }
-func (self *File) GetParent() data.FileRef { return self.ParentRef }
-func (self *File) Print()                  { core.PrintStruct(self) }
-
-func (self *File) String() string {
-	const msg = "{%s at %d [MFT:%s; REF:%s; Parent:%s]}"
-
-	return fmt.Sprintf(msg, self.Name, self.Position, self.Mft, self.FileRef, self.ParentRef)
-}
+func (*tNoneFile) IsRoot() bool          { return false }
+func (*tNoneFile) IsFile() bool          { return false }
+func (*tNoneFile) IsDir() bool           { return false }
+func (*tNoneFile) GetFile() *File        { return nil }
+func (*tNoneFile) GetId() string         { return "" }
+func (*tNoneFile) setParentIndex(*Index) {}
 
 type tFileError struct {
 	tNoneFile
@@ -76,7 +48,7 @@ func (self *tFileError) GetFile() *File  { return nil }
 func (self *tFileError) Print()          { fmt.Println("Error:", self.err) }
 
 func init() {
-	datafile.RegisterFileFormat(FILENODES_FORMAT_NAME, "[NTFS - FNODES]", new(File))
+	datafile.RegisterFileFormat(FILENODES_FORMAT_NAME, "[NTFS - FNODES]", new(File), new(Index))
 }
 
 type IFileStreamItem interface {
@@ -181,6 +153,20 @@ func (self *FileReader) GetRecordAt(index int) (IFile, error) {
 	return res, nil
 }
 
+func (self *FileReader) MakeFileStream() (FileStream, error) {
+	return self.MakeStreamFrom(1)
+}
+
+func (self *FileReader) MakeStreamFrom(index int64) (FileStream, error) {
+	res := make(chan IFileStreamItem)
+
+	if err := self.reader.InitStreamFrom(&tFileStream{res}, index); err != nil {
+		return nil, err
+	}
+
+	return FileStream(res), nil
+}
+
 func (self *FileReader) MakeStream() (FileStream, error) {
 	res := make(chan IFileStreamItem)
 
@@ -210,40 +196,6 @@ func MakeFileReader(file *os.File) (*FileReader, error) {
 
 	res := &FileReader{
 		reader: reader,
-	}
-
-	return res, nil
-}
-
-type FileWriter struct {
-	writer *datafile.DataWriter
-}
-
-func (self *FileWriter) Close() (err error) {
-	return self.writer.Close()
-}
-
-func (self *FileWriter) Write(rec IFile) error {
-	return self.writer.Write(rec)
-}
-
-func OpenFileWriter(filename string) (*FileWriter, error) {
-	f, err := core.OpenFile(filename, core.OPEN_WRONLY)
-	if err != nil {
-		return nil, core.WrapError(err)
-	}
-
-	return MakeFileWriter(f)
-}
-
-func MakeFileWriter(file *os.File) (*FileWriter, error) {
-	writer, err := datafile.MakeDataWriter(file, FILENODES_FORMAT_NAME)
-	if err != nil {
-		return nil, err
-	}
-
-	res := &FileWriter{
-		writer: writer,
 	}
 
 	return res, nil

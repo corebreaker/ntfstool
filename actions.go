@@ -9,6 +9,7 @@ import (
 
 	ntfs "essai/ntfstool/core"
 	"essai/ntfstool/core/data"
+	datafile "essai/ntfstool/core/data/file"
 	"essai/ntfstool/inspect"
 )
 
@@ -19,38 +20,47 @@ var (
 		// Commands using input/output files
 		tStringActionDef{handler: do_set_source, name: "in", next: true},
 		tStringActionDef{handler: do_set_destination, name: "out", next: true},
-		tDefaultActionDef{handler: do_file_count, name: "file-count"},
-		tDefaultActionDef{handler: do_state_count, name: "state-count"},
+		tStringActionDef{handler: do_set_destination, name: "file", next: true},
+		tStringActionDef{handler: do_set_from_param, name: "from", next: true},
+		tStringActionDef{handler: do_set_to_param, name: "to", next: true},
+		tDefaultActionDef{handler: do_record_count, name: "record-count"},
 		tIntegerActionDef{handler: do_show, name: "show"},
 		tIntegerActionDef{handler: do_head, name: "head"},
 		tIntegerActionDef{handler: do_tail, name: "tail"},
 		tIntegerActionDef{handler: do_offsets, name: "positions"},
-		tDefaultActionDef{handler: do_find, name: "find"},
-		tIntegerActionDef{handler: do_position, name: "at"},
+		tDefaultActionDef{handler: do_find_state, name: "find-state"},
+		tStringActionDef{handler: do_find_file, name: "find-file"},
+		tStringActionDef{handler: do_show_id, name: "id"},
+		tStringActionDef{handler: do_show_parent, name: "parent"},
+		tIntegerActionDef{handler: do_show_parent_ref, name: "parent-ref"},
+		tIntegerActionDef{handler: do_position, name: "at", offset: true},
+		tBoolActionDef{handler: do_check, name: "check"},
+		tIntegerActionDef{handler: do_show_attribute, name: "show-attr"},
 		tStringActionDef{handler: do_show_mft, name: "show-mft"},
 		tDefaultActionDef{handler: do_listnames, name: "list-names"},
 		tDefaultActionDef{handler: do_shownames, name: "show-names"},
 		tDefaultActionDef{handler: do_scan, name: "scan"},
-		tBoolActionDef{handler: do_check, name: "check"},
+		tStringActionDef{handler: do_move_to, name: "move-to"},
+		tStringActionDef{handler: do_make_dir, name: "mkdir"},
 
 		// Commands to use partition with the help of input/output files
 		tConfigActionDef{handler: do_open_disk},
 		tStringActionDef{handler: do_list_files, name: "ls"},
-		tIntegerActionDef{handler: do_copy_file, name: "cp"},
+		tStringActionDef{handler: do_copy_file, name: "cp"},
 		tDefaultActionDef{handler: do_fillinfo, name: "fill"},
 		tBoolActionDef{handler: do_fixmft, name: "fix-mft"},
 		tBoolActionDef{handler: do_mkfilelist, name: "make-filelist"},
 		tDefaultActionDef{handler: do_complete, name: "complete"},
 
 		// Command to explore partition
-		tIntegerActionDef{handler: do_start, name: "start", next: true, index: true},
-		tIntegerActionDef{handler: do_mft, name: "mft", next: true, index: true},
+		tIntegerActionDef{handler: do_start, name: "start", next: true, offset: true},
+		tIntegerActionDef{handler: do_mft, name: "mft", next: true, offset: true},
 		tStringActionDef{handler: do_count, name: "count"},
 		tDefaultActionDef{handler: do_mftnames, name: "mft-names"},
-		tIntegerActionDef{handler: do_record, name: "record", index: true},
-		tIntegerActionDef{handler: do_sector, name: "sector", index: true},
-		tIntegerActionDef{handler: do_cluster, name: "cluster", index: true},
-		tIntegerActionDef{handler: do_file, name: "file"},
+		tIntegerActionDef{handler: do_record, name: "record", offset: true},
+		tIntegerActionDef{handler: do_sector, name: "sector", offset: true},
+		tIntegerActionDef{handler: do_cluster, name: "cluster", offset: true},
+		tIntegerActionDef{handler: do_file_num, name: "file-num"},
 	}
 )
 
@@ -110,6 +120,33 @@ func do_set_destination(dest string, arg *tActionArg) error {
 	return nil
 }
 
+func do_set_file(pathname string, arg *tActionArg) error {
+	if pathname == "" {
+		return ntfs.WrapError(fmt.Errorf("No destination file specified"))
+	}
+
+	f, err := ntfs.OpenFile(pathname, ntfs.OPEN_RDWR)
+	if err != nil {
+		return err
+	}
+
+	arg.file = f
+
+	return nil
+}
+
+func do_set_from_param(val string, arg *tActionArg) error {
+	arg.from = val
+
+	return nil
+}
+
+func do_set_to_param(val string, arg *tActionArg) error {
+	arg.to = val
+
+	return nil
+}
+
 func do_count(pattern string, arg *tActionArg) error {
 	if pattern == "" {
 		return ntfs.WrapError(errors.New("No pattern specified"))
@@ -142,6 +179,34 @@ func do_count(pattern string, arg *tActionArg) error {
 
 		fmt.Println(fmt.Sprintf("  - `%s`: Count=%d Firsts=%v", patterns[i], lengths[i], idx_list[:sz]))
 	}
+
+	return nil
+}
+
+func do_record_count(arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
+
+	defer ntfs.DeferedCall(records.Close)
+
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
+
+	fmt.Println()
+	for rec_type, count := range records.GetCounts() {
+		fmt.Println(rec_type.GetLabel(), "=", count)
+	}
+
+	fmt.Println()
+	fmt.Println("Total Record Count =", records.GetCount())
 
 	return nil
 }

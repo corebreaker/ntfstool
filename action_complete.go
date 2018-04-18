@@ -63,7 +63,7 @@ func do_complete(arg *tActionArg) error {
 	}
 
 	add_dir_entries := func(mft *tMftEntry, dir *inspect.StateFileRecord, attr *inspect.StateAttribute) (bool, error) {
-		desc, err := dir.Header.MakeAttributeFromHeader(&attr.Header)
+		desc, err := dir.GetAttributeDesc(attr)
 		if err != nil {
 			return false, err
 		}
@@ -218,7 +218,7 @@ func do_complete(arg *tActionArg) error {
 					continue
 				}
 
-				desc, err := file.Header.MakeAttributeFromHeader(&attr.Header)
+				desc, err := file.GetAttributeDesc(attr)
 				if err != nil {
 					return err
 				}
@@ -314,35 +314,47 @@ func do_complete(arg *tActionArg) error {
 
 		mft := get_mft(file.MftId)
 
-		entry := mft.files[file.Reference]
+		entry, found := mft.files[file.Reference]
+		if found {
+			if len(file.Name) == 0 {
+				file.Name = entry.name
+			}
 
-		if file.Name == "" {
-			file.Name = entry.name
-		}
+			dir := entry.dir
 
-		dir := entry.dir
+			if file.Parent.IsNull() {
+				file.Parent = dir
+			}
 
-		if file.Parent.IsNull() {
-			file.Parent = dir
-		}
+			if !file.Parent.IsNull() {
+				parent, ok := mft.dirs[file.Parent.GetFileIndex()]
+				if ok && (parent.Header.SequenceNumber != file.Parent.GetSequenceNumber()) {
+					if file.Parent == dir {
+						continue
+					}
 
-		if !file.Parent.IsNull() {
+					parent, ok = mft.dirs[dir.GetFileIndex()]
+					if ok && (parent.Header.SequenceNumber != dir.GetSequenceNumber()) {
+						continue
+					}
+
+					file.Parent = dir
+				}
+			}
+		} else {
+			if len(file.Name) == 0 {
+				continue
+			}
+
 			parent, ok := mft.dirs[file.Parent.GetFileIndex()]
 			if ok && (parent.Header.SequenceNumber != file.Parent.GetSequenceNumber()) {
-				if file.Parent == dir {
-					continue
-				}
-
-				parent, ok = mft.dirs[dir.GetFileIndex()]
-				if ok && (parent.Header.SequenceNumber != dir.GetSequenceNumber()) {
-					continue
-				}
-
-				file.Parent = dir
+				continue
 			}
 		}
 
-		records = append(records, file)
+		if len(file.Name) > 0 {
+			records = append(records, file)
+		}
 	}
 
 	fmt.Println("\rDone: 100 %")

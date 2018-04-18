@@ -1,7 +1,9 @@
 package core
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 )
 
@@ -11,8 +13,19 @@ func (bf BootFormat) String() string {
 	return string(bf[:])
 }
 
+type BootCode [0x1AE]byte
+
+func (bc BootCode) String() string {
+	var out bytes.Buffer
+
+	fmt.Fprintln(&out)
+	FprintBytes(&out, bc[:])
+
+	return out.String()
+}
+
 type BootBlock struct {
-	Jump                  [3]byte
+	Jump                  [3]Byte
 	Format                BootFormat
 	BytesPerSector        uint16
 	SectorsPerCluster     uint8
@@ -32,7 +45,7 @@ type BootBlock struct {
 	ClustersPerFileRecord uint32
 	ClustersPerIndexBlock uint32
 	VolumeSerialNumber    uint64
-	Code                  [0x1AE]Byte
+	Code                  BootCode
 	BootSignature         uint16
 }
 

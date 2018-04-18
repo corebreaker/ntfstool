@@ -17,7 +17,7 @@ type tFileDescRecord struct {
 	Count    uint32
 	Counts   map[string]uint32
 	Headers  []int32
-	Indexes  []tFileIndex
+	Indexes  []*tFileIndex
 	Sep      string
 	Position int64
 }
@@ -28,7 +28,7 @@ type tFileDesc struct {
 	Count    uint32
 	Counts   map[string]uint32
 	Headers  []int16
-	Indexes  []tFileIndex
+	Indexes  []*tFileIndex
 	Position int64
 }
 

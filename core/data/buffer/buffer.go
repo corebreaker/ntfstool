@@ -30,6 +30,7 @@ func (self *tBufData) Read(p []byte) (n int, err error) {
 type Buffer struct {
 	data   *tBufData
 	reader *codec.Decoder
+	buf    [1024]byte
 }
 
 func (self *Buffer) Get(size int) []byte {
@@ -39,6 +40,29 @@ func (self *Buffer) Get(size int) []byte {
 	}
 
 	return data.buffer[:size]
+}
+
+func (self *Buffer) GetSize() int {
+	return len(self.data.buffer)
+}
+
+func (self *Buffer) SetSize(size int) {
+	sz := len(self.data.buffer)
+	if size < sz {
+		self.data.buffer = self.data.buffer[:size]
+	} else {
+		res, bufsz := self.data.buffer, len(self.buf)
+		for size -= sz; size > 0; size -= bufsz {
+			sz := bufsz
+			if sz > size {
+				sz = size
+			}
+
+			res = append(res, self.buf[:sz]...)
+		}
+
+		self.data.buffer = res
+	}
 }
 
 func (self *Buffer) Reset() {

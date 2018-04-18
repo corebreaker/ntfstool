@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"sort"
+	"os"
 
 	"essai/ntfstool/core"
 	"essai/ntfstool/core/data"
@@ -30,19 +30,116 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 		return err
 	}
 
+	type tNode struct {
+		file     *extract.File
+		children map[string]*tNode
+
+		addChild  func(child *tNode) bool
+		setParent func(child *tNode)
+		makeNode  func() *extract.Node
+	}
+
+	new_node := func(file *extract.File) *tNode {
+		node := &tNode{
+			file:     file,
+			children: make(map[string]*tNode),
+		}
+
+		node.addChild = func(child *tNode) bool {
+			name := child.file.Name
+			prev, exists := node.children[name]
+			if exists && (prev.file.FileRef.GetSequenceNumber() > child.file.FileRef.GetSequenceNumber()) {
+				for _, subchild := range child.children {
+					node.addChild(subchild)
+				}
+
+				return false
+			}
+
+			node.children[name] = child
+
+			return true
+		}
+
+		node.setParent = func(child *tNode) {
+			parent_file, child_file := node.file, child.file
+
+			child_file.Parent = parent_file.Id
+			child_file.ParentRef = parent_file.FileRef
+		}
+
+		node.makeNode = func() *extract.Node {
+			var children []*extract.Node
+
+			for _, n := range node.children {
+				children = append(children, n.makeNode())
+			}
+
+			return &extract.Node{
+				File:     node.file,
+				Children: children,
+			}
+		}
+
+		return node
+	}
+
+	type tFileId struct {
+		id  string
+		seq uint16
+	}
+
 	type tMft struct {
 		state *inspect.StateMft
 		list  []*inspect.StateFileRecord
-		files map[string]*extract.File
+		files map[string]*tNode
 		refs  map[data.FileRef]string
-		root  *extract.File
-		lost  *extract.File
+		fidxs map[data.FileIndex]*tFileId
+		root  *tNode
+		lost  *tNode
+
+		getFileFromId func(id string) *tNode
+		makeRoot      func() *extract.Node
+	}
+
+	new_mft := func(id string) *tMft {
+		mft := &tMft{
+			refs:  make(map[data.FileRef]string),
+			fidxs: make(map[data.FileIndex]*tFileId),
+			files: make(map[string]*tNode),
+			lost: new_node(&extract.File{
+				Id:   core.NewFileId(),
+				Mft:  id,
+				Name: "lost+found",
+			}),
+		}
+
+		mft.getFileFromId = func(id string) *tNode {
+			if mft.root.file.Id == id {
+				return mft.root
+			}
+
+			if mft.lost.file.Id == id {
+				return mft.lost
+			}
+
+			return mft.files[id]
+		}
+
+		mft.makeRoot = func() *extract.Node {
+			return mft.root.makeNode()
+		}
+
+		return mft
 	}
 
 	mfts := make(map[string]*tMft)
 	file_cnt := 0
+	no_mft := 0
 
 	i, cnt := 0, reader.GetCount()
+
+	var log bytes.Buffer
 
 	fmt.Println("Spliting states")
 	for item := range stream {
@@ -59,24 +156,30 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 			continue
 		}
 
+		rectyp := rec.GetType()
+
+		switch rectyp {
+		case inspect.STATE_RECORD_TYPE_FILE, inspect.STATE_RECORD_TYPE_MFT:
+		default:
+			continue
+		}
+
 		id := rec.GetMftId()
+		if len(id) == 0 {
+			no_mft++
+
+			fmt.Fprintln(&log, "No MFT for record:")
+			core.FprintStruct(&log, rec)
+			fmt.Fprintln(&log)
+		}
 
 		mft, ok := mfts[id]
 		if !ok {
-			mft = &tMft{
-				refs:  make(map[data.FileRef]string),
-				files: make(map[string]*extract.File),
-				lost: &extract.File{
-					Id:   core.NewFileId(),
-					Mft:  id,
-					Name: "Lost+Found",
-				},
-			}
-
+			mft = new_mft(id)
 			mfts[id] = mft
 		}
 
-		switch rec.GetType() {
+		switch rectyp {
 		case inspect.STATE_RECORD_TYPE_FILE:
 			record := rec.(*inspect.StateFileRecord)
 
@@ -90,13 +193,15 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 	fmt.Println("\r100%                                                      ")
 
-	fmt.Println("Make list")
+	fmt.Println("Building nodes")
 	i, cnt = 0, file_cnt
 
-	var res_list []*extract.File
-
 	for mftid, mft := range mfts {
-		res_list = append(res_list, mft.lost)
+		if mft.state == nil {
+			return core.WrapError(fmt.Errorf("No MFT with ID=%s", mftid))
+		}
+
+		origin := mft.state.PartOrigin
 
 		for _, file := range mft.list {
 			fmt.Printf("\rDone: %d %%", 100*i/cnt)
@@ -120,44 +225,39 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 				attr_state := attrs[0]
 
-				attr_data, err := file.Header.MakeAttributeFromHeader(&attr_state.Header)
+				attr_data, err := file.GetAttributeDesc(attr_state)
 				if err != nil {
 					return err
 				}
 
+				runlist = attr_state.RunList
 				size = attr_data.GetSize()
-
-				origin := mft.state.PartOrigin
-
-				for _, entry := range attr_state.RunList {
-					is_zero := entry.Zero
-
-					start := entry.Start
-					if is_zero {
-						start = core.ClusterNumber(int64(start) + origin)
-					}
-
-					runlist = append(runlist, &core.RunEntry{
-						Start: start,
-						Count: entry.Count,
-						Zero:  is_zero,
-					})
-				}
 			}
 
-			f := &extract.File{
+			f := new_node(&extract.File{
 				Id:        id,
 				FileRef:   ref,
 				ParentRef: file.Parent,
 				Mft:       mftid,
 				Position:  position,
+				Origin:    origin,
 				Size:      size,
 				Name:      name,
 				RunList:   runlist,
-			}
+			})
 
 			mft.refs[ref] = id
-			res_list = append(res_list, f)
+
+			idx := ref.GetFileIndex()
+			fid, exists := mft.fidxs[idx]
+
+			seq := ref.GetSequenceNumber()
+			if !exists || (seq > fid.seq) {
+				mft.fidxs[idx] = &tFileId{
+					id:  id,
+					seq: seq,
+				}
+			}
 
 			if file.Header.MftRecordNumber == 5 {
 				mft.root = f
@@ -169,10 +269,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 	fmt.Println("\r100%                                                      ")
 
-	fmt.Println("Completing directory hierarchy")
-
-	var log bytes.Buffer
-
+	fmt.Println("Making directory hierarchy")
 	no_parents := 0
 	i = 0
 
@@ -180,8 +277,8 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 		if mft.root == nil {
 			seq := func() uint16 {
 				for _, f := range mft.files {
-					if f.ParentRef.GetFileIndex() == 5 {
-						return f.ParentRef.GetSequenceNumber()
+					if f.file.ParentRef.GetFileIndex() == 5 {
+						return f.file.ParentRef.GetSequenceNumber()
 					}
 				}
 
@@ -189,106 +286,102 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 			}()
 
 			if seq == 0 {
-				seq++
+				seq = 1
 			}
 
-			f := &extract.File{
+			mft.root = new_node(&extract.File{
 				Id:      core.NewFileId(),
 				FileRef: data.MakeFileRef(seq, 5),
 				Mft:     mftid,
 				Name:    ".",
-			}
-
-			res_list = append(res_list, f)
-			mft.root = f
+			})
 		}
 
-		mft.lost.Parent = mft.root.Id
-		mft.lost.ParentRef = mft.root.FileRef
+		mft.root.setParent(mft.lost)
+		mft.root.addChild(mft.lost)
 
 		for _, file := range mft.files {
 			fmt.Printf("\rDone: %d %%", 100*i/cnt)
 			i++
 
-			parent, ok := mft.refs[file.ParentRef]
+			ref := file.file.ParentRef
+			parent, ok := mft.refs[ref]
 			if !ok {
-				fmt.Fprintf(&log, fmt.Sprintf("Parent not found for file %s", file))
-				fmt.Fprintln(&log)
+				idx := ref.GetFileIndex()
 
-				no_parents++
+				if idx == mft.root.file.FileRef.GetFileIndex() {
+					parent = mft.root.file.Id
+				} else {
+					fid, ok := mft.fidxs[idx]
+					if ok {
+						parent = fid.id
+						file.file.ParentRef = data.MakeFileRef(fid.seq, idx)
+					} else {
+						fmt.Fprintf(&log, fmt.Sprintf("Parent not found for file %s", file))
+						fmt.Fprintln(&log)
 
-				parent = mft.lost.Id
+						no_parents++
+
+						parent = mft.lost.file.Id
+					}
+				}
 			}
 
-			file.Parent = parent
+			file.file.Parent = parent
 		}
 	}
 
 	fmt.Println("\r100%                                                      ")
 
-	fmt.Println("Sorting")
+	fmt.Println("Completing directory hierarchy")
+	dup_names := 0
+	i, cnt = 0, i
 
-	sort.Slice(res_list, func(i, j int) bool {
-		f1, f2 := res_list[i], res_list[j]
-		if f1.Mft != f1.Mft {
-			return false
-		}
+	for _, mft := range mfts {
+		get_parent := func(n *tNode) *tNode {
+			var f *extract.File
 
-		if f1.IsRoot() {
-			return true
-		}
+			if n != nil {
+				f = n.file
+			}
 
-		id, mft := f1.Id, mfts[f1.Mft]
-
-		get_parent := func(f *extract.File) *extract.File {
 			if (f == nil) || (len(f.Parent) == 0) {
 				return nil
 			}
 
-			id := f.Parent
-
-			if mft.root.Id == id {
-				return mft.root
-			}
-
-			if mft.lost.Id == id {
-				return mft.lost
-			}
-
-			return mft.files[id]
+			return mft.getFileFromId(f.Parent)
 		}
 
-		for f := f2; f != nil; f = get_parent(f) {
-			if f.Parent == id {
-				return true
+		for _, file := range mft.files {
+			fmt.Printf("\rDone: %d %%", 100*i/cnt)
+			i++
+
+			parent := get_parent(file)
+			if parent != nil {
+				parent = mft.lost
+			}
+
+			if !parent.addChild(file) {
+				dup_names++
 			}
 		}
-
-		return false
-	})
-
-	fmt.Println("Make index map")
-	indexes := make(map[string]int64)
-
-	cnt = len(res_list)
-	for i, file := range res_list {
-		fmt.Printf("\rDone: %d %%", 100*i/cnt)
-
-		indexes[file.Id] = int64(i)
 	}
 
 	fmt.Println("\r100%                                                      ")
 
-	fmt.Println("Make index map")
+	fmt.Println("Making file tree")
 
-	for i, file := range res_list {
-		fmt.Printf("\rDone: %d %%", 100*i/cnt)
+	var roots []*extract.Node
 
-		file.ParentIdx = indexes[file.Parent]
+	for _, mft := range mfts {
+		roots = append(roots, mft.makeRoot())
 	}
 
-	fmt.Println("\r100%                                                      ")
+	tree := extract.Tree{
+		Roots: roots,
+	}
 
+	fmt.Println()
 	fmt.Println("Writing")
 
 	writer, err := extract.MakeFileWriter(dest)
@@ -298,23 +391,21 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 	defer core.DeferedCall(writer.Close)
 
-	for i, entry := range res_list {
+	writer.WriteTree(&tree, func(cur, tot int) {
 		fmt.Printf("\rDone: %d %%", 100*i/cnt)
-
-		if err := writer.Write(entry); err != nil {
-			return err
-		}
-	}
+	})
 
 	fmt.Println("\r100%                                                      ")
 
 	fmt.Println()
 	fmt.Println("File with no parent:", no_parents)
+	fmt.Println("File with no MFT:   ", no_mft)
+	fmt.Println("Dupplicate names:   ", dup_names)
 
 	if verbose {
-		fmt.Println()
-		fmt.Println("Details:")
-		fmt.Println(&log)
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Details:")
+		fmt.Fprintln(os.Stderr, &log)
 	}
 
 	return nil

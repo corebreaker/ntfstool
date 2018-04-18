@@ -136,7 +136,7 @@ func (self *FileRecord) IsDir() bool {
 }
 
 func (self *FileRecord) PrefixSize() int {
-	return 1024 - len(self.Data)
+	return StructSize(self) - len(self.Data)
 }
 
 func (self *FileRecord) FileRef() data.FileRef {

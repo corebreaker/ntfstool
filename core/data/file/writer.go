@@ -35,7 +35,7 @@ func (self *DataWriter) Close() (err error) {
 			}
 		}
 
-		self.file, self.desc.Indexes, self.desc.Headers, self.writer = nil, nil, nil, nil
+		self.file, self.writer, self.desc.Indexes, self.desc.Headers, self.desc.Counts = nil, nil, nil, nil, nil
 	}()
 
 	pos, err := self.get_pos()
@@ -43,7 +43,7 @@ func (self *DataWriter) Close() (err error) {
 		return err
 	}
 
-	self.desc.Indexes = append(self.desc.Indexes, tFileIndex{Logical: -1, Physical: pos})
+	self.desc.Indexes = append(self.desc.Indexes, &tFileIndex{Logical: -1, Physical: pos})
 
 	if err := self.write_record(new(tNullRecord)); err != nil {
 		return err
@@ -62,12 +62,16 @@ func (self *DataWriter) Close() (err error) {
 }
 
 func (self *DataWriter) Write(rec data.IDataRecord) (err error) {
-	defer core.Recover(func(err error) {
-		if err == nil {
-			code := rec.GetEncodingCode()
+	defer core.Recover(func(e error) {
+		if e == nil {
+			if err == nil {
+				code := rec.GetEncodingCode()
 
-			self.desc.Count++
-			self.desc.Counts[code]++
+				self.desc.Count++
+				self.desc.Counts[code]++
+			}
+		} else {
+			e = err
 		}
 	})
 
@@ -80,9 +84,35 @@ func (self *DataWriter) Write(rec data.IDataRecord) (err error) {
 		return err
 	}
 
-	self.desc.Indexes = append(self.desc.Indexes, tFileIndex{Logical: rec.GetPosition(), Physical: pos})
+	defer core.Recover(func(e error) {
+		if e == nil {
+			if err == nil {
+				self.desc.Indexes = append(self.desc.Indexes, &tFileIndex{Logical: rec.GetPosition(), Physical: pos})
+			}
+		} else {
+			e = err
+		}
+	})
 
 	return self.write_record(rec)
+}
+
+func (self *DataWriter) IsClosed() bool {
+	if self.file == nil {
+		return true
+	}
+
+	_, err := self.file.Seek(0, os.SEEK_END)
+	if err == nil {
+		return false
+	}
+
+	oserr, ok := err.(*os.PathError)
+	if !ok {
+		return false
+	}
+
+	return oserr.Err == os.ErrClosed
 }
 
 func OpenDataWriter(filename, format_name string) (*DataWriter, error) {

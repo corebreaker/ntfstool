@@ -55,20 +55,30 @@ func print_value(indent, prefix string, w io.Writer, v reflect.Value) {
 			val := v.Field(i)
 
 			ftyp := f.Type
-			if ftyp.Kind() == reflect.Interface {
+			if (ftyp.Kind() == reflect.Interface) && (!val.IsNil()) {
 				val = val.Elem()
 				ftyp = val.Type()
 			}
 
 			switch ftyp.Kind() {
 			case reflect.Ptr, reflect.Interface:
-				ftyp = ftyp.Elem()
+				if !val.IsNil() {
+					ftyp = ftyp.Elem()
+				}
 			}
 
 			switch {
 			case f.Anonymous || (ftyp.Kind() == reflect.Struct):
-				fmt.Fprintln(w, indent, prefix+f.Name, ":")
-				print_value(indent+padding+"   ", "", w, val)
+				fv := val
+
+				if fv.Type().Kind() == reflect.Ptr {
+					fv = fv.Elem()
+				}
+
+				if (!f.Anonymous) || (fv.Type().Size() > 0) {
+					fmt.Fprintln(w, indent, prefix+f.Name, ":")
+					print_value(indent+padding+"   ", "", w, val)
+				}
 
 			case f.Type.Implements(stringer_iface):
 				fmt.Fprintln(w, indent, prefix+f.Name, ":", val.Interface().(fmt.Stringer).String())

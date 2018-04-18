@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"os"
 
 	"essai/ntfstool/core"
 	"essai/ntfstool/inspect"
@@ -450,10 +451,18 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 	defer core.DeferedCall(writer.Close)
 
 	cnt = len(records)
+	no_mft := 0
 
 	fmt.Println("Writing")
 	for i, state := range records {
 		fmt.Printf("\rDone: %d %%", 100*i/cnt)
+
+		if (state.GetHeader().Type == core.RECTYP_FILE) && (len(state.GetMftId()) == 0) {
+			no_mft++
+
+			fmt.Fprintf(&log, "No MFT for position %d", state.GetPosition())
+			fmt.Fprintln(&log)
+		}
 
 		if err := writer.Write(state); err != nil {
 			return err
@@ -467,12 +476,13 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 	fmt.Println("  - Records:            ", len(records))
 	fmt.Println("  - Orpheans:           ", orpheans)
 	fmt.Println("  - MFT collisions:     ", mft_collision)
+	fmt.Println("  - MFT missings:       ", no_mft)
 	fmt.Println("  - Position collisions:", pos_collision)
 
 	if verbose {
-		fmt.Println()
-		fmt.Println("Details:")
-		fmt.Println(&log)
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Details:")
+		fmt.Fprintln(os.Stderr, &log)
 	}
 
 	return nil

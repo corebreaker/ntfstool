@@ -12,27 +12,207 @@ import (
 	"essai/ntfstool/core/data/codec"
 )
 
-type DataReader struct {
+type DataModifier struct {
 	tDataContainer
 
+	position  int64
 	positions map[int64]int
+	writer    *codec.Encoder
 	buffer    *buffer.Buffer
 }
 
-func (self *DataReader) Close() error {
+func (self *DataModifier) write_record(rec data.IDataRecord) error {
+	_, err := self.file.Seek(self.position, os.SEEK_SET)
+	if err != nil {
+		return core.WrapError(err)
+	}
+
+	sz, err := self.writer.Encode(rec)
+	if err != nil {
+		return err
+	}
+
+	self.position += int64(sz)
+	bufsz := self.buffer.GetSize()
+	if sz > bufsz {
+		self.buffer.SetSize(bufsz)
+	}
+
+	return nil
+}
+
+func (self *DataModifier) Close() (err error) {
 	if err := self.check(); err != nil {
 		return err
 	}
 
 	defer func() {
-		desc := self.desc
-		self.file, self.positions, self.buffer, desc.Indexes, desc.Headers, desc.Counts = nil, nil, nil, nil, nil, nil
+		if self.file != nil {
+			res_err := self.file.Close()
+			if err == nil {
+				err = core.WrapError(res_err)
+			}
+		}
+
+		self.desc.Indexes, self.desc.Headers, self.desc.Counts = nil, nil, nil
+		self.file, self.positions, self.buffer, self.writer = nil, nil, nil, nil
 	}()
 
-	return core.WrapError(self.file.Close())
+	if err := self.write_record(new(tNullRecord)); err != nil {
+		return err
+	}
+
+	if self.position < self.desc.Position {
+		self.position = self.desc.Position
+	} else {
+		self.desc.Position = self.position
+	}
+
+	if err := self.write_record(&self.desc); err != nil {
+		return err
+	}
+
+	return core.WrapError(binary.Write(self.file, binary.BigEndian, self.desc.Position))
 }
 
-func (self *DataReader) ReadRecord(position int64) (data.IDataRecord, error) {
+func (self *DataModifier) Write(rec data.IDataRecord) (err error) {
+	defer core.Recover(func(e error) {
+		if e == nil {
+			if err == nil {
+				code := rec.GetEncodingCode()
+
+				self.desc.Count++
+				self.desc.Counts[code]++
+
+				pos := rec.GetPosition()
+				if pos > 0 {
+					self.positions[pos] = len(self.desc.Indexes)
+				}
+			}
+		} else {
+			e = err
+		}
+	})
+
+	if err := self.check(); err != nil {
+		return err
+	}
+
+	filepos := self.position
+
+	defer core.Recover(func(e error) {
+		if e == nil {
+			if err == nil {
+				last := len(self.desc.Indexes) - 1
+				self.desc.Indexes = append(self.desc.Indexes, self.desc.Indexes[last])
+				self.desc.Indexes[last] = &tFileIndex{
+					Logical:  rec.GetPosition(),
+					Physical: filepos,
+				}
+
+				self.desc.Indexes[last+1].Physical = self.position
+			}
+		} else {
+			e = err
+		}
+	})
+
+	return self.write_record(rec)
+}
+
+func (self *DataModifier) SetRecordAt(index int, rec data.IDataRecord) (err error) {
+	if err := self.check(); err != nil {
+		return err
+	}
+
+	if (0 > index) || (index >= int(self.desc.Count)) {
+		return core.WrapError(fmt.Errorf("Bad index %d (limit= %d)", index, self.desc.Count))
+	}
+
+	old_start := self.desc.Indexes[index].Physical
+	old_size := self.desc.Indexes[index+1].Physical - old_start
+
+	self.buffer.Reset()
+	if _, err := self.file.ReadAt(self.buffer.Get(int(old_size)), old_start); err != nil {
+		return core.WrapError(err)
+	}
+
+	old, err := core.ReadRecord(self.buffer)
+	if err != nil {
+		return err
+	}
+
+	trailer_start := self.position
+
+	if err := self.write_record(rec); err != nil {
+		return err
+	}
+
+	trailer_end := self.position
+	rec_size := trailer_end - trailer_start
+
+	rec_buf := self.buffer.Get(int(rec_size))
+
+	if _, err := self.file.ReadAt(rec_buf, trailer_start); err != nil {
+		return core.WrapError(err)
+	}
+
+	var move_buf [65536]byte
+
+	bufsz := int64(len(move_buf))
+	move_end := old_start + rec_size
+
+	for pos := trailer_end; pos > move_end; pos -= bufsz {
+		dest := pos - bufsz
+		src := dest - rec_size
+		if src < old_start {
+			src = old_start
+			dest = src + rec_size
+		}
+
+		b := move_buf[:(pos - dest)]
+
+		if _, err := self.file.ReadAt(b, src); err != nil {
+			return core.WrapError(err)
+		}
+
+		if _, err := self.file.WriteAt(b, dest); err != nil {
+			return core.WrapError(err)
+		}
+	}
+
+	if _, err := self.file.WriteAt(rec_buf, old_start); err != nil {
+		return core.WrapError(err)
+	}
+
+	self.desc.Counts[old.GetEncodingCode()]--
+	self.desc.Counts[rec.GetEncodingCode()]++
+
+	pos := old.GetPosition()
+	if pos > 0 {
+		delete(self.positions, pos)
+	}
+
+	pos = rec.GetPosition()
+	if pos > 0 {
+		self.positions[pos] = index
+	}
+
+	self.desc.Indexes[index].Logical = pos
+
+	delta := rec_size - old_size
+	if delta != 0 {
+		for _, idx := range self.desc.Indexes[index:] {
+			idx.Physical += delta
+		}
+	}
+
+	self.position = trailer_start + delta
+
+	return nil
+}
+
+func (self *DataModifier) ReadRecord(position int64) (data.IDataRecord, error) {
 	if err := self.check(); err != nil {
 		return nil, err
 	}
@@ -57,7 +237,7 @@ func (self *DataReader) ReadRecord(position int64) (data.IDataRecord, error) {
 	return core.ReadRecord(self.buffer)
 }
 
-func (self *DataReader) GetRecordAt(index int) (data.IDataRecord, error) {
+func (self *DataModifier) GetRecordAt(index int) (data.IDataRecord, error) {
 	if err := self.check(); err != nil {
 		return nil, err
 	}
@@ -77,11 +257,11 @@ func (self *DataReader) GetRecordAt(index int) (data.IDataRecord, error) {
 	return core.ReadRecord(self.buffer)
 }
 
-func (self *DataReader) InitStream(stream data.IDataStream) error {
+func (self *DataModifier) InitStream(stream data.IDataStream) error {
 	return self.InitStreamFrom(stream, 0)
 }
 
-func (self *DataReader) InitStreamFrom(stream data.IDataStream, index int64) error {
+func (self *DataModifier) InitStreamFrom(stream data.IDataStream, index int64) error {
 	if err := self.check(); err != nil {
 		return err
 	}
@@ -165,7 +345,7 @@ func (self *DataReader) InitStreamFrom(stream data.IDataStream, index int64) err
 	return nil
 }
 
-func (self *DataReader) IsClosed() bool {
+func (self *DataModifier) IsClosed() bool {
 	if self.file == nil {
 		return true
 	}
@@ -183,16 +363,21 @@ func (self *DataReader) IsClosed() bool {
 	return oserr.Err == os.ErrClosed
 }
 
-func OpenDataReader(filename, format_name string) (*DataReader, error) {
-	f, err := core.OpenFile(filename, core.OPEN_RDONLY)
+func OpenDataModifier(filename, format_name string) (*DataModifier, error) {
+	f, err := core.OpenFile(filename, core.OPEN_RDWR)
 	if err != nil {
 		return nil, err
 	}
 
-	return MakeDataReader(f, format_name)
+	res, err := MakeDataModifier(f, format_name)
+	if err != nil {
+		f.Close()
+	}
+
+	return res, err
 }
 
-func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
+func MakeDataModifier(file *os.File, format_name string) (*DataModifier, error) {
 	var format *tFileFormat
 
 	switch format_name {
@@ -243,7 +428,7 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 
 	reader := codec.MakeDecoder(file, format.registry)
 
-	res := &DataReader{
+	res := &DataModifier{
 		tDataContainer: tDataContainer{
 			desc: tFileDesc{
 				Counts: make(map[string]uint32),
@@ -252,6 +437,7 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 			file:   file,
 		},
 		positions: make(map[int64]int),
+		writer:    codec.MakeEncoder(file, format.registry),
 	}
 
 	if _, err := reader.Decode(&res.desc); err != nil {
@@ -295,6 +481,7 @@ func MakeDataReader(file *os.File, format_name string) (*DataReader, error) {
 		return nil, core.WrapError(err)
 	}
 
+	res.position = res.desc.Indexes[res.desc.Count].Physical
 	res.buffer = buffer.MakeBuffer(int(max_len), res.format.registry)
 
 	for _, l := range res.desc.Headers {

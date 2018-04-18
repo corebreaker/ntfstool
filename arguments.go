@@ -25,6 +25,9 @@ type tActionArg struct {
 	disk      *inspect.NtfsDisk
 	source    *os.File
 	dest      *os.File
+	file      *os.File
+	from      string
+	to        string
 	_args     ntfs.Args
 }
 
@@ -92,6 +95,14 @@ func (self *tActionArg) GetOutput() (*os.File, error) {
 	return self.dest, nil
 }
 
+func (self *tActionArg) GetFile() (*os.File, error) {
+	if self.file == nil {
+		return nil, ntfs.WrapError(fmt.Errorf("No file specified"))
+	}
+
+	return self.file, nil
+}
+
 func (self *tActionArg) GetFiles() (src, dest *os.File, err error) {
 	src, err = self.GetInput()
 	if err == nil {
@@ -107,13 +118,30 @@ func (self *tActionArg) GetFiles() (src, dest *os.File, err error) {
 	return
 }
 
-func (self *tActionArg) GetTransferFiles() (*os.File, string, error) {
+func (self *tActionArg) GetTransferFiles(dest_default string) (*os.File, string, error) {
 	src, err := self.GetInput()
 	if err != nil {
 		return nil, "", err
 	}
 
-	return src, self.GetDef("to", "."), nil
+	dest := self.GetToParam()
+	if len(dest) == 0 {
+		if len(dest_default) == 0 {
+			return nil, "", ntfs.WrapError(fmt.Errorf("No destination file specified"))
+		}
+
+		dest = dest_default
+	}
+
+	return src, dest, nil
+}
+
+func (self *tActionArg) GetFromParam() string {
+	return self.from
+}
+
+func (self *tActionArg) GetToParam() string {
+	return self.to
 }
 
 type iActionDef interface {
@@ -179,7 +207,7 @@ type tIntegerActionDef struct {
 	handler func(int64, *tActionArg) error
 	name    string
 	next    bool
-	index   bool
+	offset  bool
 }
 
 func (self tIntegerActionDef) get_name() string                         { return self.name }
@@ -188,7 +216,7 @@ func (self tIntegerActionDef) handle_int(v int64, a *tActionArg) error  { return
 func (self tIntegerActionDef) handle_str(v string, a *tActionArg) error { return nil }
 func (self tIntegerActionDef) handle_bool(v bool, a *tActionArg) error  { return nil }
 func (self tIntegerActionDef) action_type() tActionType {
-	if self.index {
+	if self.offset {
 		return _ACT_INDEX
 	}
 

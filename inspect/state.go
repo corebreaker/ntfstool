@@ -106,27 +106,27 @@ func (self *StateFileRecord) Init(disk *core.DiskIO) (bool, error) {
 		return false, err
 	}
 
-	record := &self.Header
-	header := &record.RecordHeader
+	rec := &self.Header
+	header := &rec.RecordHeader
 
 	if (header.Type != core.RECTYP_FILE) || (header.UsaCount > 3) || ((header.UsaOffset + (header.UsaCount * 2)) >= 1024) {
 		return false, nil
 	}
 
-	if (record.BytesAllocated > 1024) || (record.BytesInUse > 1024) || (record.AttributesOffset >= 1024) {
+	if (rec.BytesAllocated > 1024) || (rec.BytesInUse > 1024) || (rec.AttributesOffset >= 1024) {
 		return false, nil
 	}
 
-	if (record.Flags & core.FFLAG_IN_USE) == core.FFLAG_NONE {
+	if ((rec.Flags & core.FFLAG_IN_USE) == core.FFLAG_NONE) || (int(rec.AttributesOffset) < self.Header.PrefixSize()) {
 		return false, nil
 	}
 
-	min_sz := uint32(record.PrefixSize())
-	if (record.BytesAllocated < min_sz) || (record.BytesInUse < min_sz) {
+	min_sz := uint32(rec.PrefixSize())
+	if (rec.BytesAllocated < min_sz) || (rec.BytesInUse < min_sz) {
 		return false, nil
 	}
 
-	attributes, err := record.GetAttributes(true)
+	attributes, err := rec.GetAttributes(true)
 	if err != nil {
 		return false, err
 	}
@@ -148,13 +148,13 @@ func (self *StateFileRecord) Init(disk *core.DiskIO) (bool, error) {
 		position := int64(idx)
 		attr := attributes[idx]
 
-		desc, err := record.MakeAttributeFromHeader(attr)
+		desc, err := rec.MakeAttributeFromHeader(attr)
 		if err != nil {
 			return false, err
 		}
 
 		self.Attributes[i] = &StateAttribute{
-			BasePosition:   position + self.Position + int64(record.PrefixSize()),
+			BasePosition:   position + self.Position + int64(rec.PrefixSize()),
 			RecordPosition: position,
 			Header:         *attr,
 			RunList:        desc.GetRunList(),
@@ -162,6 +162,20 @@ func (self *StateFileRecord) Init(disk *core.DiskIO) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (self *StateFileRecord) GetAttributeDesc(attr *StateAttribute) (*core.AttributeDesc, error) {
+	return self.Header.MakeAttributeFromHeader(&attr.Header)
+}
+
+func (self *StateFileRecord) GetAttribute(pos int64) *StateAttribute {
+	for _, a := range self.Attributes {
+		if a.RecordPosition == pos {
+			return a
+		}
+	}
+
+	return nil
 }
 
 func (self *StateFileRecord) GetAttributes(attr core.AttributeType, others ...core.AttributeType) []*StateAttribute {
@@ -469,10 +483,6 @@ func (self *StateReader) GetCount() int {
 
 func (self *StateReader) GetIndexCount() int {
 	return self.reader.GetIndexCount()
-}
-
-func (self *StateReader) GetCounts() map[data.IDataRecord]int {
-	return self.reader.GetCounts()
 }
 
 func (self *StateReader) ReadRecord(position int64) (IStateRecord, error) {

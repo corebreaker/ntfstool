@@ -5,10 +5,13 @@ import (
 	"fmt"
 
 	"essai/ntfstool/core"
+	"essai/ntfstool/extract"
 	"essai/ntfstool/inspect"
+
+	"github.com/gobwas/glob"
 )
 
-func do_find(arg *tActionArg) error {
+func do_find_state(arg *tActionArg) error {
 	src, err := arg.GetInput()
 	if err != nil {
 		return err
@@ -26,6 +29,8 @@ func do_find(arg *tActionArg) error {
 	if err != nil {
 		return err
 	}
+
+	defer core.DeferedCall(stream.Close)
 
 	position, pos_ok := arg.IdxExt("position")
 
@@ -54,7 +59,7 @@ func do_find(arg *tActionArg) error {
 
 		if pos_ok {
 			idx := item.Index()
-            p := state.GetPosition()
+			p := state.GetPosition()
 
 			if p == position {
 				fmt.Fprintln(&out, "  - Position found at:", item.Index())
@@ -85,6 +90,56 @@ func do_find(arg *tActionArg) error {
 			fmt.Printf(msg, min_idx, min_pos, max_idx, max_pos)
 			fmt.Println()
 		}
+	}
+
+	return nil
+}
+
+func do_find_file(pattern string, arg *tActionArg) error {
+	p, err := glob.Compile(pattern)
+	if err != nil {
+		return core.WrapError(err)
+	}
+
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	tree, err := extract.ReadTreeFromFile(src)
+	if err != nil {
+		return err
+	}
+
+	var stream extract.FileStream
+
+	from := arg.GetFromParam()
+	if from == "" {
+		stream = tree.MakeStream()
+	} else {
+		stream = tree.MakeStreamFrom(from)
+		if stream == nil {
+			return core.WrapError(fmt.Errorf("Id `%s` not found", from))
+		}
+	}
+
+	defer core.DeferedCall(stream.Close)
+
+	fmt.Println()
+	fmt.Println("Result:")
+	for item := range stream {
+		rec := item.Record()
+		if rec.IsNull() || (!rec.HasName()) || (rec.GetFile() == nil) || (!p.Match(rec.GetName())) {
+			continue
+		}
+
+		path := tree.GetFilePathFromFile(rec)
+		if !p.Match(path) {
+			continue
+		}
+
+		fmt.Printf("  - %d: %s", rec.GetId(), path)
 	}
 
 	return nil

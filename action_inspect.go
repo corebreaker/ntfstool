@@ -5,33 +5,10 @@ import (
 	"os"
 
 	"essai/ntfstool/core"
+	"essai/ntfstool/core/data"
 	datafile "essai/ntfstool/core/data/file"
 	"essai/ntfstool/inspect"
 )
-
-func do_state_count(arg *tActionArg) error {
-	src, err := arg.GetInput()
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Reading")
-	states, err := inspect.MakeStateReader(src)
-	if err != nil {
-		return err
-	}
-
-	defer core.DeferedCall(states.Close)
-
-	for rec_type, count := range states.GetCounts() {
-		fmt.Println(rec_type.GetLabel(), "=", count)
-	}
-
-	fmt.Println()
-	fmt.Println("Total Record Count =", states.GetCount())
-
-	return nil
-}
 
 func do_fillinfo(arg *tActionArg) error {
 	src, dest, err := arg.GetFiles()
@@ -65,8 +42,9 @@ func do_fillinfo(arg *tActionArg) error {
 	defer core.DeferedCall(writer.Close)
 
 	i, cnt := 0, states.GetCount()
-	idx_count := 0
-	idx_good := 0
+	idx_count, idx_good := 0, 0
+	resident_datas, external_names := 0, 0
+	no_name, no_data := 0, 0
 
 	fmt.Println(fmt.Sprintf("Filling (count= %d)", cnt))
 	for item := range stream {
@@ -83,7 +61,9 @@ func do_fillinfo(arg *tActionArg) error {
 			continue
 		}
 
-		_, idx_ok := state.(*inspect.StateIndexRecord)
+		rectyp := state.GetType()
+
+		idx_ok := rectyp == inspect.STATE_RECORD_TYPE_INDEX
 		if idx_ok {
 			idx_count++
 		}
@@ -94,6 +74,33 @@ func do_fillinfo(arg *tActionArg) error {
 		}
 
 		if ok {
+			if rectyp == inspect.STATE_RECORD_TYPE_FILE {
+				rec := state.(*inspect.StateFileRecord)
+				attrs := rec.GetAttributes(core.ATTR_DATA)
+				if len(attrs) == 0 {
+					no_data++
+
+					continue
+				}
+
+				if !attrs[0].Header.NonResident.Value() {
+					resident_datas++
+				}
+
+				attrs = rec.GetAttributes(core.ATTR_FILE_NAME)
+				if len(attrs) == 0 {
+					no_name++
+				}
+
+				for _, attr := range attrs {
+					if attr.Header.NonResident.Value() {
+						external_names++
+
+						break
+					}
+				}
+			}
+
 			if idx_ok {
 				idx_good++
 			}
@@ -105,7 +112,11 @@ func do_fillinfo(arg *tActionArg) error {
 	}
 
 	fmt.Println("\r100 %                                                      ")
-	fmt.Println("Indexes:", idx_good, "/", idx_count)
+	fmt.Println("Indexes:                       ", idx_good, "/", idx_count)
+	fmt.Println("Records with Resident datas:   ", resident_datas)
+	fmt.Println("Records with Non-Resident name:", external_names)
+	fmt.Println("Records with no data found:    ", no_data)
+	fmt.Println("Records with no name found:    ", no_name)
 
 	return nil
 }
@@ -212,7 +223,7 @@ func do_shownames(arg *tActionArg) error {
 	}
 
 	fmt.Println("Reading")
-	reader, err := datafile.MakeDataReader(src, "")
+	reader, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
 	if err != nil {
 		return err
 	}
@@ -307,7 +318,7 @@ func do_position(position int64, arg *tActionArg) error {
 	}
 
 	fmt.Println("Reading")
-	records, err := datafile.MakeDataReader(src, "")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
 	if err != nil {
 		return err
 	}
@@ -326,6 +337,76 @@ func do_position(position int64, arg *tActionArg) error {
 	fmt.Println("Result:")
 	record.Print()
 
+	file, ok := record.(*inspect.StateFileRecord)
+	if ok {
+		fmt.Println()
+		fmt.Println("Data:")
+		core.PrintBytes(file.Header.Data[:])
+	}
+
+	return nil
+}
+
+func do_show_attribute(attribute_position int64, arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
+
+	defer core.DeferedCall(records.Close)
+
+	var state data.IDataRecord
+
+	file_pos, file_pos_ok := arg.IntExt("for-file-at")
+	if file_pos_ok {
+		state, err = records.ReadRecord(file_pos)
+		if err != nil {
+			return err
+		}
+	}
+
+	file_idx, file_idx_ok := arg.IntExt("for-file")
+	if file_idx_ok {
+		state, err = records.GetRecordAt(int(file_idx))
+		if err != nil {
+			return err
+		}
+	}
+
+	file, ok := state.(*inspect.StateFileRecord)
+	if !ok {
+		return core.WrapError(fmt.Errorf("Bad record type"))
+	}
+
+	attr := file.GetAttribute(attribute_position)
+	if attr == nil {
+		return core.WrapError(fmt.Errorf("Attribute not found"))
+	}
+
+	desc, err := file.GetAttributeDesc(attr)
+	if err != nil {
+		return err
+	}
+
+	val, err := desc.GetValue(nil)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("File:")
+	core.PrintStruct(desc)
+
+	fmt.Println()
+	fmt.Println("Value:")
+	core.PrintStruct(val)
+
 	return nil
 }
 
@@ -336,7 +417,7 @@ func do_show(index int64, arg *tActionArg) error {
 	}
 
 	fmt.Println("Reading")
-	records, err := datafile.MakeDataReader(src, "")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
 	if err != nil {
 		return err
 	}
@@ -365,7 +446,7 @@ func do_head(index int64, arg *tActionArg) error {
 	}
 
 	fmt.Println("Reading")
-	records, err := datafile.MakeDataReader(src, "")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
 	if err != nil {
 		return err
 	}
@@ -407,7 +488,7 @@ func do_tail(index int64, arg *tActionArg) error {
 	}
 
 	fmt.Println("Reading")
-	records, err := datafile.MakeDataReader(src, "")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
 	if err != nil {
 		return err
 	}
@@ -447,7 +528,7 @@ func do_offsets(index int64, arg *tActionArg) error {
 	}
 
 	fmt.Println("Reading")
-	records, err := datafile.MakeDataReader(src, "")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
 	if err != nil {
 		return err
 	}

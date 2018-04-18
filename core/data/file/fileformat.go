@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	COMMON_DATA_FILEFORMAT_NAME = "<All>"
-	SIGNATURE_LENGTH            = 16
+	ANY_FILEFORMAT   = "<All>"
+	SIGNATURE_LENGTH = 16
 )
 
 type tFileFormat struct {
@@ -33,11 +33,11 @@ func RegisterFileFormat(name, signature string, headers ...data.IDataRecord) {
 	var common_headers []data.IDataRecord
 	var registry *codec.Registry
 
-	if name != COMMON_DATA_FILEFORMAT_NAME {
-		ref, ok := file_formats[COMMON_DATA_FILEFORMAT_NAME]
+	if name != ANY_FILEFORMAT {
+		ref, ok := file_formats[ANY_FILEFORMAT]
 		if !ok {
-			RegisterFileFormat(COMMON_DATA_FILEFORMAT_NAME, "", new(tNullRecord), new(tFileDesc))
-			ref = file_formats[COMMON_DATA_FILEFORMAT_NAME]
+			RegisterFileFormat(ANY_FILEFORMAT, "", new(tNullRecord), new(tFileDesc))
+			ref = file_formats[ANY_FILEFORMAT]
 		}
 
 		common_headers = ref.headers
@@ -70,7 +70,7 @@ func RegisterFileFormat(name, signature string, headers ...data.IDataRecord) {
 }
 
 func GetRegistry(name string) *codec.Registry {
-	if name == COMMON_DATA_FILEFORMAT_NAME {
+	if name == ANY_FILEFORMAT {
 		return nil
 	}
 
