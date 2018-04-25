@@ -20,16 +20,15 @@ var (
 		// Commands using input/output files
 		tStringActionDef{handler: do_set_source, name: "in", next: true},
 		tStringActionDef{handler: do_set_destination, name: "out", next: true},
-		tStringActionDef{handler: do_set_destination, name: "file", next: true},
+		tStringActionDef{handler: do_set_file, name: "file", next: true},
 		tStringActionDef{handler: do_set_from_param, name: "from", next: true},
-		tStringActionDef{handler: do_set_to_param, name: "to", next: true},
+		tStringActionDef{handler: do_set_into_param, name: "to", next: true},
 		tDefaultActionDef{handler: do_record_count, name: "record-count"},
 		tIntegerActionDef{handler: do_show, name: "show"},
 		tIntegerActionDef{handler: do_head, name: "head"},
 		tIntegerActionDef{handler: do_tail, name: "tail"},
 		tIntegerActionDef{handler: do_offsets, name: "positions"},
-		tDefaultActionDef{handler: do_find_state, name: "find-state"},
-		tStringActionDef{handler: do_find_file, name: "find-file"},
+		tDefaultActionDef{handler: do_find_state, name: "find"},
 		tStringActionDef{handler: do_show_id, name: "id"},
 		tStringActionDef{handler: do_show_parent, name: "parent"},
 		tIntegerActionDef{handler: do_show_parent_ref, name: "parent-ref"},
@@ -40,13 +39,15 @@ var (
 		tDefaultActionDef{handler: do_listnames, name: "list-names"},
 		tDefaultActionDef{handler: do_shownames, name: "show-names"},
 		tDefaultActionDef{handler: do_scan, name: "scan"},
-		tStringActionDef{handler: do_move_to, name: "move-to"},
+		tStringActionDef{handler: do_list_files, name: "ls"},
+		tStringActionDef{handler: do_move_to, name: "mv"},
+		tStringActionDef{handler: do_copy_to, name: "cp"},
+		tStringActionDef{handler: do_remove_from, name: "rm"},
 		tStringActionDef{handler: do_make_dir, name: "mkdir"},
 
 		// Commands to use partition with the help of input/output files
 		tConfigActionDef{handler: do_open_disk},
-		tStringActionDef{handler: do_list_files, name: "ls"},
-		tStringActionDef{handler: do_copy_file, name: "cp"},
+		tStringActionDef{handler: do_save_file, name: "save"},
 		tDefaultActionDef{handler: do_fillinfo, name: "fill"},
 		tBoolActionDef{handler: do_fixmft, name: "fix-mft"},
 		tBoolActionDef{handler: do_mkfilelist, name: "make-filelist"},
@@ -141,8 +142,8 @@ func do_set_from_param(val string, arg *tActionArg) error {
 	return nil
 }
 
-func do_set_to_param(val string, arg *tActionArg) error {
-	arg.to = val
+func do_set_into_param(val string, arg *tActionArg) error {
+	arg.into = val
 
 	return nil
 }

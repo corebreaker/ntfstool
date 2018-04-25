@@ -37,6 +37,12 @@ func do_show_id(id string, arg *tActionArg) error {
 		record := entry.Record()
 		file := record.GetFile()
 
+		if file == nil {
+			record.Print()
+
+			return nil
+		}
+
 		if file.Id != id {
 			continue
 		}
@@ -145,7 +151,7 @@ func do_show_parent_ref(ref int64, arg *tActionArg) error {
 	return nil
 }
 
-func do_list_files(file string, arg *tActionArg) error {
+func do_list_files(node_pattern string, arg *tActionArg) error {
 	src, err := arg.GetInput()
 	if err != nil {
 		return err
@@ -158,20 +164,30 @@ func do_list_files(file string, arg *tActionArg) error {
 	}
 
 	node_list := tree.Roots
+	msg := "Results:"
 
-	if file != "" {
-		node, ok := tree.IdMap[file]
-		if !ok {
-			return core.WrapError(fmt.Errorf("Bad ID: %d", file))
+	if node_pattern != "" {
+		matcher, err := parseNodePattern(node_pattern, tree)
+		if err != nil {
+			return err
 		}
 
-		fmt.Println("Path:", tree.GetNodePath(node))
-
-		node_list = node.Children
+		node_list = matcher.GetNodes()
+		if len(node_list) == 1 {
+			for _, n := range node_list {
+				if n.IsDir() {
+					msg = fmt.Sprintf("Results for %s:", n.File)
+					node_list = n.Children
+				}
+			}
+		}
 	}
 
 	_, nometa := arg.GetExt("nometa")
 	_, noempty := arg.GetExt("noempty")
+
+	fmt.Println()
+	fmt.Println(msg)
 
 	for _, n := range node_list {
 		if (nometa && extract.IsMetaFile(n.File)) || (noempty && n.IsEmpty(noempty)) {
@@ -194,7 +210,7 @@ func do_list_files(file string, arg *tActionArg) error {
 	return nil
 }
 
-func do_copy_file(file string, arg *tActionArg) error {
+func do_save_file(file string, arg *tActionArg) error {
 	src, dest, err := arg.GetTransferFiles(".")
 	if err != nil {
 		return err
@@ -206,7 +222,7 @@ func do_copy_file(file string, arg *tActionArg) error {
 		return err
 	}
 
-	node, ok := tree.IdMap[file]
+	node, ok := tree.Nodes[file]
 	if !ok {
 		return core.WrapError(fmt.Errorf("Bad ID: %d", file))
 	}
@@ -241,114 +257,4 @@ func do_copy_file(file string, arg *tActionArg) error {
 	_, err = extract.SaveNode(disk, node, destname, noempty, nometa)
 
 	return err
-}
-
-func do_make_dir(name string, arg *tActionArg) error {
-	if len(name) == 0 {
-		return core.WrapError(fmt.Errorf("No name specified for the new directory"))
-	}
-
-	src, err := arg.GetFile()
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Reading")
-	file, err := extract.MakeFileModifier(src)
-	if err != nil {
-		return err
-	}
-
-	defer core.DeferedCall(file.Close)
-
-	tree, err := extract.MakeTree(file)
-	if err != nil {
-		return err
-	}
-
-	parent_id := arg.GetToParam()
-	if len(parent_id) == 0 {
-		mft, ok := arg.GetExt("to-mft")
-		if ok {
-			parent_id = func() string {
-				for _, root := range tree.Roots {
-					id := root.File.Mft
-					if id == mft {
-						return id
-					}
-				}
-
-				return ""
-			}()
-		}
-
-		if len(parent_id) == 0 {
-			return core.WrapError(fmt.Errorf("No parent specified"))
-		}
-	}
-
-	parent_node, ok := tree.IdMap[parent_id]
-	if !ok {
-		return core.WrapError(fmt.Errorf("Parent `%s` not found", parent_id))
-	}
-
-	parent := parent_node.File
-
-	return file.Write(&extract.File{
-		Id:        core.NewFileId(),
-		Mft:       parent.Mft,
-		Parent:    parent.Id,
-		ParentIdx: parent.Index,
-		Origin:    parent.Origin,
-		Index:     int64(file.GetCount()),
-		Name:      name,
-	})
-}
-
-func do_move_to(dir_id string, arg *tActionArg) error {
-	if len(dir_id) == 0 {
-		return core.WrapError(fmt.Errorf("No destination directory id specified for the new directory"))
-	}
-
-	src_file, err := arg.GetFile()
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Reading")
-	file, err := extract.MakeFileModifier(src_file)
-	if err != nil {
-		return err
-	}
-
-	defer core.DeferedCall(file.Close)
-
-	tree, err := extract.MakeTree(file)
-	if err != nil {
-		return err
-	}
-
-	src_id, ok := arg.GetExt("id")
-	if !ok {
-		return core.WrapError(fmt.Errorf("No file id specified"))
-	}
-
-	src_node, ok := tree.IdMap[src_id]
-	if !ok {
-		return core.WrapError(fmt.Errorf("Source file `%s` not found", src_id))
-	}
-
-	src := src_node.File
-
-	dir_node, ok := tree.IdMap[dir_id]
-	if !ok {
-		return core.WrapError(fmt.Errorf("Destination directory `%s` not found", dir_id))
-	}
-
-	dir := dir_node.File
-
-	src.Parent = dir.Id
-	src.ParentIdx = dir.Index
-
-	return file.SetRecordAt(int(src.Index), src)
 }

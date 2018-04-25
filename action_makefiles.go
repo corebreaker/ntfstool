@@ -69,10 +69,12 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 		}
 
 		node.makeNode = func() *extract.Node {
-			var children []*extract.Node
+			children := make(map[string]*extract.Node)
 
 			for _, n := range node.children {
-				children = append(children, n.makeNode())
+				node := n.makeNode()
+
+				children[node.File.Id] = node
 			}
 
 			return &extract.Node{
@@ -371,10 +373,11 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 	fmt.Println("Making file tree")
 
-	var roots []*extract.Node
+	roots := make(map[string]*extract.Node)
 
 	for _, mft := range mfts {
-		roots = append(roots, mft.makeRoot())
+		root := mft.makeRoot()
+		roots[root.File.Id] = root
 	}
 
 	tree := extract.Tree{
@@ -392,7 +395,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 	defer core.DeferedCall(writer.Close)
 
 	writer.WriteTree(&tree, func(cur, tot int) {
-		fmt.Printf("\rDone: %d %%", 100*i/cnt)
+		fmt.Printf("\rDone: %d %%", 100*cur/tot)
 	})
 
 	fmt.Println("\r100%                                                      ")

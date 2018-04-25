@@ -1,6 +1,7 @@
 package file
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -15,9 +16,12 @@ import (
 type DataModifier struct {
 	tDataContainer
 
+	modified  bool
 	position  int64
+	trail_pos int64
 	positions map[int64]int
 	writer    *codec.Encoder
+	reader    *codec.Decoder
 	buffer    *buffer.Buffer
 }
 
@@ -35,7 +39,12 @@ func (self *DataModifier) write_record(rec data.IDataRecord) error {
 	self.position += int64(sz)
 	bufsz := self.buffer.GetSize()
 	if sz > bufsz {
-		self.buffer.SetSize(bufsz)
+		self.buffer.SetSize(sz)
+	}
+
+	self.modified = true
+	if self.trail_pos < self.position {
+		self.trail_pos = self.position
 	}
 
 	return nil
@@ -58,18 +67,25 @@ func (self *DataModifier) Close() (err error) {
 		self.file, self.positions, self.buffer, self.writer = nil, nil, nil, nil
 	}()
 
+	if !self.modified {
+		return nil
+	}
+
 	if err := self.write_record(new(tNullRecord)); err != nil {
 		return err
 	}
 
-	if self.position < self.desc.Position {
-		self.position = self.desc.Position
-	} else {
-		self.desc.Position = self.position
-	}
+	self.desc.Position = self.position
 
 	if err := self.write_record(&self.desc); err != nil {
 		return err
+	}
+
+	pos := self.position
+
+	if pos < self.trail_pos {
+		pos = self.trail_pos
+		self.file.Seek(self.trail_pos, os.SEEK_SET)
 	}
 
 	return core.WrapError(binary.Write(self.file, binary.BigEndian, self.desc.Position))
@@ -130,7 +146,8 @@ func (self *DataModifier) SetRecordAt(index int, rec data.IDataRecord) (err erro
 	}
 
 	old_start := self.desc.Indexes[index].Physical
-	old_size := self.desc.Indexes[index+1].Physical - old_start
+	old_end := self.desc.Indexes[index+1].Physical
+	old_size := old_end - old_start
 
 	self.buffer.Reset()
 	if _, err := self.file.ReadAt(self.buffer.Get(int(old_size)), old_start); err != nil {
@@ -150,7 +167,6 @@ func (self *DataModifier) SetRecordAt(index int, rec data.IDataRecord) (err erro
 
 	trailer_end := self.position
 	rec_size := trailer_end - trailer_start
-
 	rec_buf := self.buffer.Get(int(rec_size))
 
 	if _, err := self.file.ReadAt(rec_buf, trailer_start); err != nil {
@@ -160,29 +176,58 @@ func (self *DataModifier) SetRecordAt(index int, rec data.IDataRecord) (err erro
 	var move_buf [65536]byte
 
 	bufsz := int64(len(move_buf))
-	move_end := old_start + rec_size
+	pos_start := old_start + rec_size
+	pos_end := trailer_end - old_size
+	delta := rec_size - old_size
 
-	for pos := trailer_end; pos > move_end; pos -= bufsz {
-		dest := pos - bufsz
-		src := dest - rec_size
-		if src < old_start {
-			src = old_start
-			dest = src + rec_size
+	if delta > 0 {
+		for pos := pos_end; pos > pos_start; pos -= bufsz {
+			dest := pos - bufsz
+			src := dest - delta
+			if src < old_end {
+				src = old_end
+				dest = src + delta
+			}
+
+			b := move_buf[:(pos - dest)]
+
+			if _, err := self.file.ReadAt(b, src); err != nil {
+				return core.WrapError(err)
+			}
+
+			if _, err := self.file.WriteAt(b, dest); err != nil {
+				return core.WrapError(err)
+			}
 		}
+	} else if delta < 0 {
+		for dest := pos_start; dest < pos_end; dest += bufsz {
+			src := dest - delta
 
-		b := move_buf[:(pos - dest)]
+			sz := bufsz
+			if (src + sz) > trailer_start {
+				sz = trailer_start - src
+			}
 
-		if _, err := self.file.ReadAt(b, src); err != nil {
-			return core.WrapError(err)
-		}
+			b := move_buf[:sz]
 
-		if _, err := self.file.WriteAt(b, dest); err != nil {
-			return core.WrapError(err)
+			if _, err := self.file.ReadAt(b, src); err != nil {
+				return core.WrapError(err)
+			}
+
+			if _, err := self.file.WriteAt(b, dest); err != nil {
+				return core.WrapError(err)
+			}
 		}
 	}
 
-	if _, err := self.file.WriteAt(rec_buf, old_start); err != nil {
+	last_sz, err := self.file.WriteAt(rec_buf, old_start)
+	if err != nil {
 		return core.WrapError(err)
+	}
+
+	last_pos := old_start + int64(last_sz)
+	if self.trail_pos < last_pos {
+		self.trail_pos = last_pos
 	}
 
 	self.desc.Counts[old.GetEncodingCode()]--
@@ -200,14 +245,13 @@ func (self *DataModifier) SetRecordAt(index int, rec data.IDataRecord) (err erro
 
 	self.desc.Indexes[index].Logical = pos
 
-	delta := rec_size - old_size
 	if delta != 0 {
-		for _, idx := range self.desc.Indexes[index:] {
+		for _, idx := range self.desc.Indexes[(index + 1):] {
 			idx.Physical += delta
 		}
 	}
 
-	self.position = trailer_start + delta
+	self.position = pos_end
 
 	return nil
 }
@@ -255,6 +299,85 @@ func (self *DataModifier) GetRecordAt(index int) (data.IDataRecord, error) {
 	}
 
 	return core.ReadRecord(self.buffer)
+}
+
+func (self *DataModifier) DelRecordAt(index int) error {
+	if err := self.check(); err != nil {
+		return err
+	}
+
+	if (0 > index) || (index >= int(self.desc.Count)) {
+		return core.WrapError(fmt.Errorf("Bad index %d (limit= %d)", index, self.desc.Count))
+	}
+
+	old_start := self.desc.Indexes[index].Physical
+	old_end := self.desc.Indexes[index+1].Physical
+	old_size := old_end - old_start
+
+	self.buffer.Reset()
+	if _, err := self.file.ReadAt(self.buffer.Get(int(old_size)), old_start); err != nil {
+		return core.WrapError(err)
+	}
+
+	old, err := core.ReadRecord(self.buffer)
+	if err != nil {
+		return err
+	}
+
+	last := int(self.desc.Count) - 1
+	if index < last {
+		records := make([]data.IDataRecord, last-index)
+		indexes := self.desc.Indexes
+
+		buf := make([]byte, indexes[last].Physical-old_end)
+		if _, err := self.file.ReadAt(buf, old_end); err != nil {
+			return err
+		}
+
+		dec_redear := bytes.NewReader(buf)
+		decoder := self.reader.WithReader(dec_redear).ToCoreDecoder()
+
+		for i := range records {
+			p, err := dec_redear.Seek(0, os.SEEK_CUR)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(fmt.Sprintf(">> IDX:%d LST:%d I:%d LEN=%d POS=%d REM=%d", index, last, i, len(buf), p, dec_redear.Len()))
+			r, err := core.ReadRecord(decoder)
+			if err != nil {
+				return err
+			}
+
+			records[i] = r
+		}
+
+		copy(indexes[index:], indexes[(index+1):])
+		self.position = old_start
+
+		for i, rec := range records {
+			indexes[index+i].Physical = self.position
+			rec.SetIndex(rec.GetIndex() - 1)
+
+			if err := self.write_record(rec); err != nil {
+				return err
+			}
+		}
+	} else {
+		self.position = old_start
+	}
+
+	self.desc.Counts[old.GetEncodingCode()]--
+	self.desc.Count--
+
+	pos := old.GetPosition()
+	if pos > 0 {
+		delete(self.positions, pos)
+	}
+
+	self.desc.Indexes = self.desc.Indexes[:last]
+
+	return nil
 }
 
 func (self *DataModifier) InitStream(stream data.IDataStream) error {
@@ -412,7 +535,8 @@ func MakeDataModifier(file *os.File, format_name string) (*DataModifier, error) 
 		}
 	}
 
-	if _, err := file.Seek(-8, os.SEEK_END); err != nil {
+	trail_pos, err := file.Seek(-8, os.SEEK_END)
+	if err != nil {
 		return nil, core.WrapError(err)
 	}
 
@@ -431,13 +555,16 @@ func MakeDataModifier(file *os.File, format_name string) (*DataModifier, error) 
 	res := &DataModifier{
 		tDataContainer: tDataContainer{
 			desc: tFileDesc{
-				Counts: make(map[string]uint32),
+				Trailer: true,
+				Counts:  make(map[string]uint32),
 			},
 			format: format,
 			file:   file,
 		},
+		trail_pos: trail_pos,
 		positions: make(map[int64]int),
 		writer:    codec.MakeEncoder(file, format.registry),
+		reader:    reader,
 	}
 
 	if _, err := reader.Decode(&res.desc); err != nil {

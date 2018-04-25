@@ -13,7 +13,7 @@ type IFileReader interface {
 
 type Node struct {
 	File     *File
-	Children []*Node
+	Children map[string]*Node
 }
 
 func (self *Node) IsEmpty(nometa bool) bool {
@@ -65,6 +65,21 @@ func (self *Node) IsDir() bool {
 	return self.File.IsDir()
 }
 
+func (self *Node) AddNode(n *Node) {
+	self.Children[n.File.Name] = n
+}
+
+func (self *Node) AddFile(f *File) *Node {
+	n := NewNode(f)
+	self.AddNode(n)
+
+	return n
+}
+
+func (self *Node) remove(n *Node) {
+	delete(self.Children, n.File.Name)
+}
+
 func (self *Node) walk(stream *tFileStream) {
 	file := self.File
 	stream.SendRecord(uint(file.Index), file.Position, file)
@@ -74,10 +89,17 @@ func (self *Node) walk(stream *tFileStream) {
 	}
 }
 
+func NewNode(f *File) *Node {
+	return &Node{
+		File:     f,
+		Children: make(map[string]*Node),
+	}
+}
+
 type Tree struct {
-	Index Index
-	Roots []*Node
-	IdMap map[string]*Node
+	Mfts  map[string]string
+	Nodes map[string]*Node
+	Roots map[string]*Node
 }
 
 func (self *Tree) get_node_path(node *Node, suffix string) string {
@@ -98,7 +120,7 @@ func (self *Tree) get_node_path(node *Node, suffix string) string {
 		res = fmt.Sprintf("%s/%s", res, suffix)
 	}
 
-	return self.get_node_path(self.IdMap[parent], res)
+	return self.get_node_path(self.Nodes[parent], res)
 }
 
 func (self *Tree) GetNodePath(node *Node) string {
@@ -106,11 +128,52 @@ func (self *Tree) GetNodePath(node *Node) string {
 }
 
 func (self *Tree) GetFilePath(file *File) string {
-	return self.get_node_path(self.IdMap[file.Id], "")
+	return self.get_node_path(self.Nodes[file.Id], "")
 }
 
 func (self *Tree) GetFilePathFromFile(file IFile) string {
-	return self.get_node_path(self.IdMap[file.GetId()], "")
+	return self.get_node_path(self.Nodes[file.GetId()], "")
+}
+
+func (self *Tree) GetRoot(mft string) *Node {
+	id, ok := self.Mfts[mft]
+	if !ok {
+		return nil
+	}
+
+	return self.Roots[id]
+}
+
+func (self *Tree) Remove(node *Node) {
+	file := node.File
+	parent, ok := self.Nodes[file.Parent]
+	if ok {
+		parent.remove(node)
+	}
+
+	idx := file.Index
+
+	for _, n := range self.Nodes {
+		if n.File.Index > idx {
+			n.File.Index--
+		}
+	}
+
+	id := file.Id
+	_, is_root := self.Roots[id]
+	if is_root {
+		delete(self.Roots, id)
+		delete(self.Mfts, file.Mft)
+	}
+}
+
+func (self *Tree) GetRootID(mft string) string {
+	root := self.GetRoot(mft)
+	if root == nil {
+		return ""
+	}
+
+	return root.File.Id
 }
 
 func (self *Tree) MakeStream() FileStream {
@@ -132,7 +195,7 @@ func (self *Tree) MakeStream() FileStream {
 }
 
 func (self *Tree) MakeStreamFrom(id string) FileStream {
-	start, ok := self.IdMap[id]
+	start, ok := self.Nodes[id]
 	if !ok {
 		return nil
 	}
@@ -160,9 +223,10 @@ func MakeTree(reader IFileReader) (*Tree, error) {
 
 	defer core.DeferedCall(stream.Close)
 
-	var roots []*Node
 	var nodes []*Node
 
+	mfts := make(map[string]string)
+	roots := make(map[string]*Node)
 	id_map := make(map[string]*Node)
 
 	for item := range stream {
@@ -177,13 +241,15 @@ func MakeTree(reader IFileReader) (*Tree, error) {
 
 		file := rec.GetFile()
 
-		t := &Node{File: file}
+		t := NewNode(file)
+		id := file.Id
 
-		id_map[file.Id] = t
+		id_map[id] = t
 		nodes = append(nodes, t)
 
 		if file.IsRoot() && file.IsDir() {
-			roots = append(roots, t)
+			roots[id] = t
+			mfts[file.Mft] = id
 		}
 	}
 
@@ -193,11 +259,12 @@ func MakeTree(reader IFileReader) (*Tree, error) {
 			continue
 		}
 
-		parent.Children = append(parent.Children, n)
+		parent.AddNode(n)
 	}
 
 	res := &Tree{
-		IdMap: id_map,
+		Mfts:  mfts,
+		Nodes: id_map,
 		Roots: roots,
 	}
 

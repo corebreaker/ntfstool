@@ -2,9 +2,10 @@ package inspect
 
 import (
 	"bytes"
-	"essai/ntfstool/core"
 	"fmt"
 	"os"
+
+	"essai/ntfstool/core"
 )
 
 const BUFFER_SIZE int64 = 100 * 1024 * 1024

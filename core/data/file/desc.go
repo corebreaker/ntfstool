@@ -13,6 +13,10 @@ type tFileIndex struct {
 	Physical int64
 }
 
+func (fidx *tFileIndex) String() string {
+	return fmt.Sprintf("{FILE-IDX: LOG=%d PHYS=%d}", fidx.Logical, fidx.Physical)
+}
+
 type tFileDescRecord struct {
 	Count    uint32
 	Counts   map[string]uint32
@@ -25,6 +29,7 @@ type tFileDescRecord struct {
 type tFileDesc struct {
 	BaseDataRecord
 
+	Trailer  bool
 	Count    uint32
 	Counts   map[string]uint32
 	Headers  []int16
@@ -44,12 +49,17 @@ func (d *tFileDesc) MarshalBinary() (data []byte, err error) {
 		headers[i] = int32(h)
 	}
 
+	sep := ""
+	if d.Trailer {
+		sep = "FILE-END"
+	}
+
 	res, err := protobuf.Encode(&tFileDescRecord{
 		Count:    d.Count,
 		Counts:   d.Counts,
 		Headers:  headers,
 		Indexes:  d.Indexes,
-		Sep:      "FILE-END",
+		Sep:      sep,
 		Position: d.Position,
 	})
 
@@ -74,6 +84,7 @@ func (d *tFileDesc) UnmarshalBinary(data []byte) error {
 	}
 
 	*d = tFileDesc{
+		Trailer:  rec.Sep == "FILE-END",
 		Count:    rec.Count,
 		Counts:   rec.Counts,
 		Headers:  headers,

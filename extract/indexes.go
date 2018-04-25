@@ -17,6 +17,7 @@ func (*Index) IsFile() bool            { return false }
 func (*Index) IsDir() bool             { return false }
 func (*Index) GetFile() *File          { return nil }
 func (*Index) GetId() string           { return "" }
+func (*Index) GetIndex() int           { return 0 }
 func (*Index) GetEncodingCode() string { return "I" }
 func (*Index) setParentIndex(*Index)   {}
 func (idx *Index) Print()              { fmt.Println(idx) }

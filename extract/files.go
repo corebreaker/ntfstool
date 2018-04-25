@@ -36,6 +36,8 @@ func (self *File) GetPosition() int64        { return self.Position }
 func (self *File) GetName() string           { return self.Name }
 func (self *File) GetLabel() string          { return "Files Nodes" }
 func (self *File) GetParent() data.FileRef   { return self.ParentRef }
+func (self *File) GetIndex() int             { return int(self.Index) }
+func (self *File) SetIndex(idx int)          { self.Index = int64(idx) }
 func (self *File) Print()                    { core.PrintStruct(self) }
 func (self *File) setParentIndex(idx *Index) { self.ParentIdx = idx.IdMap[self.Parent] }
 

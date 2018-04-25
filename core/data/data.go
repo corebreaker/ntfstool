@@ -45,6 +45,8 @@ type IDataRecord interface {
 	GetName() string
 	GetParent() FileRef
 	GetLabel() string
+	GetIndex() int
+	SetIndex(int)
 	Print()
 }
 

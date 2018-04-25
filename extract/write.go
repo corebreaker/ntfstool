@@ -24,19 +24,18 @@ func (self *FileWriter) WriteTree(t *Tree, progress func(cur, tot int)) error {
 		progress = func(int, int) {}
 	}
 
-	var list []IFile
-
 	index := &Index{
 		IdMap: make(map[string]int64),
 	}
 
-	list = append(list, index)
+	list := []IFile{index}
 
 	type tListHelper struct {
 		add func(node *Node)
 	}
 
-	helper := new(tListHelper)
+	var helper tListHelper
+
 	helper.add = func(n *Node) {
 		f := n.File
 

@@ -35,6 +35,7 @@ func (*tNoneFile) IsFile() bool          { return false }
 func (*tNoneFile) IsDir() bool           { return false }
 func (*tNoneFile) GetFile() *File        { return nil }
 func (*tNoneFile) GetId() string         { return "" }
+func (*tNoneFile) GetIndex() int         { return 0 }
 func (*tNoneFile) setParentIndex(*Index) {}
 
 type tFileError struct {

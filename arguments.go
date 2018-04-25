@@ -27,7 +27,7 @@ type tActionArg struct {
 	dest      *os.File
 	file      *os.File
 	from      string
-	to        string
+	into        string
 	_args     ntfs.Args
 }
 
@@ -124,7 +124,7 @@ func (self *tActionArg) GetTransferFiles(dest_default string) (*os.File, string,
 		return nil, "", err
 	}
 
-	dest := self.GetToParam()
+	dest := self.GetIntoParam()
 	if len(dest) == 0 {
 		if len(dest_default) == 0 {
 			return nil, "", ntfs.WrapError(fmt.Errorf("No destination file specified"))
@@ -140,8 +140,8 @@ func (self *tActionArg) GetFromParam() string {
 	return self.from
 }
 
-func (self *tActionArg) GetToParam() string {
-	return self.to
+func (self *tActionArg) GetIntoParam() string {
+	return self.into
 }
 
 type iActionDef interface {

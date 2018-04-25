@@ -3,7 +3,6 @@ package buffer
 import (
 	"io"
 
-	"essai/ntfstool/core"
 	"essai/ntfstool/core/data/codec"
 )
 
@@ -73,7 +72,7 @@ func (self *Buffer) Decode() (interface{}, error) {
 	var res interface{}
 
 	if _, err := self.reader.Decode(&res); err != nil {
-		return nil, core.WrapError(err)
+		return nil, err
 	}
 
 	return res, nil

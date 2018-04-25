@@ -1,7 +1,20 @@
-- reader/writer d'une StateCollection à streamiser
+- commenter le code
+- compléter l'aide:
+	+ commande `help`
+	+ README
+- ajouter les tests unitaires
+- utiliser une autre bibliotheques pour l'indexation des fichiers
 - MFT détectées sur les bords de la partition
 - lecture en dehors des limites de la partition
-- les commandes head/tail/positions doivent pouvoir s'appliquer à tous les formats de fiochers
+- les commandes head/tail/positions doivent pouvoir s'appliquer à tous les formats de fichers
 - pour windows, permettre des entrées MFT qui n'est pas aligné sur les clusters (ou les sectteur)
     -> et avoir un PartOrigin qui décale la partition NTFS à cheval sur un cluster de la partition physique
 - dans fix-mft, traiter les STATE_RECORD_TYPE_INDEX
+- ne pas enregistrer les index et supprimer les méthodes GetIndex et SetIndex d'un record
+   -> pour simplifier la suppression d'un record
+- faire les tris:
+	+ types de records dans `record-count`
+	+ liste de files dans `ls`
+- mettre le nom de la partition non plus en premier dans la ligne de commande, mais dans un configurator
+- pour le file node format, mettre le tree dans le record 0 pour éviter la relecture en streamming
+- Modifier.write_record(): utiliser une méthode EncodeAt, donc mettre un ReaderAt dans l'objet Encoder

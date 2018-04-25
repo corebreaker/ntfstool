@@ -24,7 +24,7 @@ Some parameters configures commands. This is the list of command configurators:
   - mft=offset:      specifies the MFT shift from the partition starting with an offset in the partition
   - start=offset:    specifies the offset in the partition where the readind starts (partition start)
   - from=file-id:    specifies a file ID or a directorry ID for others commands
-  - to=dest:         specifies a ` + "`" + `dest` + "`" + ` file or directory pathname for others commands
+  - to=dest:         specifies a ` + "`dest`" + ` file or directory pathname for others commands
 
 Some parameters are commands.
 For input and output files, there are 2 file formats (used for file recovery:
@@ -44,24 +44,27 @@ Commands to inspect the partition:
 
 Commands to explore the input file:
   - record-count:    shows count of file records in the input file with a file node format
-  - positions=n:     shows the ` + "`" + `n` + "`" + ` fisrt positions of the records in the input file
-  - head=n:          shows the ` + "`" + `n` + "`" + ` fisrt records in the input file
-  - tail=n:          shows the ` + "`" + `n` + "`" + ` last records in the input file
+  - positions=n:     shows the ` + "`n`" + ` fisrt positions of the records in the input file
+  - head=n:          shows the ` + "`n`" + ` fisrt records in the input file
+  - tail=n:          shows the ` + "`n`" + ` last records in the input file
   - list-names:      list filenames in input file with the state format
   - show-names:      show filenames and their parent in input file
   - show-mft=id:     shows the MFT from its ID in the input file with the state format
-  - show=n:          shows n-th record in the input file, first record has ` + "`" + `n` + "`" + ` equal to zero
+  - show=n:          shows n-th record in the input file, first record has ` + "`n`" + ` equal to zero
   - at=offset:       shows the record in the input file at the specified file position (offset)
   - find-state:      find a record in the input file in state format
-  - find-file=query: find a record in the input file in file node format
   - show-attr=attr   shows the attribute from its position for a state file record in the input file
+  - check:           checks the integrity of data structures in the input file in the state format
+
+Commands to explore or modify a file in file node format:
   - id=file-id:      shows the record with file ID in the input file in file node format
   - parent=file-id:  shows children files of file ID in the input file in file node format
   - parent-ref=idx:  shows children files of file index in the input file in file node format
-  - check:           checks the integrity of data structures in the input file in the state format
-  - ls[=dir-id]:     list files in directory from the input file in file node format
-  - move-to=dir-id:  moves a file or a directory to a directory from input filn in file node format
-  - mkdir=name:      create a directory to a directory from input filn in file node format
+  - ls[=nodes]:      list files in directory from the input file
+  - mv=nodes:        moves file nodes to a directory from input file
+  - cp=nodes:        copies file nodes to a directory from input file
+  - rm=nodes:        copies file nodes to a directory from input file
+  - mkdir=name:      create a directory to a directory from input file
 
 Commands for file recovery:
   - scan:            scans the partition to find MFTs and MFT records and report them to the output file
@@ -69,13 +72,20 @@ Commands for file recovery:
   - fix-mft:         fixes MFT entries from the input file into the output file (in the state format)
   - complete:        completes datas from the input file into the output file (in the state format)
   - make-filelist:   builds the file list from the input file (states) into the output file (file nodes)
-  - cp=file-id:      copy file from partition into the output file with the help of the input file
+  - save=file-id:    copy file from partition into the output file with the help of the input file
 
 Offset has unit suffixes:
   - c = clusters, example: 2c = 2 clusters
   - s = sectors, example: 4s = 4 sectors (2Ko)
+
+` + "`nodes`" + ` values are a node query in the file node input file,
+it is a comma separated list of node expressions:
+nodes = expression[,expression[,...]]
+
+A node expression is either an ID prefixed with `+"`@`"+` (ie: @ffbb5d4c2afe41e8949117d8743af40d),
+either a "glob" expression (cf: http://github.com/gobwas/glob).
 `)
-	fmt.Println("Shows the content of the MBR:", prog, "(with no parameter)")
+	fmt.Println("Show the content of the MBR:", prog, "(with no parameter)")
 	fmt.Println()
 	fmt.Println("For inspecting file records in MFT from partition:")
 	fmt.Println("  -", prog, "mft=2c file-num=0 raw")
@@ -87,7 +97,7 @@ Offset has unit suffixes:
 	fmt.Println(" 4.", prog, "in=02_records.dat out=03_files.dat complete")
 	fmt.Println(" 5.", prog, "in=03_files.dat out=04_fslist.dat make-filelist")
 	fmt.Println(" 6.", prog, "in=04_fslist.dat ls")
-	fmt.Println(" 7.", prog, "in=04_fslist.dat cp=c3eb25a23f0b4448a8fc94ce521847e2 to=recovery.dir")
+	fmt.Println(" 7.", prog, "in=04_fslist.dat save=c3eb25a23f0b4448a8fc94ce521847e2 to=recovery.dir")
 	fmt.Println()
 
 	return nil

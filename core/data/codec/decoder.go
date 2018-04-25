@@ -30,6 +30,14 @@ type Decoder struct {
 	last     tEntryHeader
 }
 
+func (self *Decoder) WithReader(reader io.Reader) *Decoder {
+	return &Decoder{
+		reader:   reader,
+		registry: self.registry,
+		last:     self.last,
+	}
+}
+
 func (self *Decoder) ToCoreDecoder() core.IDecoder {
 	return &tDecoder{self}
 }
@@ -57,7 +65,6 @@ func (self *Decoder) Decode(val interface{}) (int, error) {
 	var header tEntryHeader
 
 	if err := protobuf.Decode(headbuf, &header); err != nil {
-		fmt.Println("Header:", self.last, self.registry.foreward[self.last.Type])
 		return 0, core.WrapError(err)
 	}
 

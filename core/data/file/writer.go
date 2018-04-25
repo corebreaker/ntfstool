@@ -138,7 +138,8 @@ func MakeDataWriter(file *os.File, format_name string) (*DataWriter, error) {
 	res := &DataWriter{
 		tDataContainer: tDataContainer{
 			desc: tFileDesc{
-				Counts: make(map[string]uint32),
+				Trailer: true,
+				Counts:  make(map[string]uint32),
 			},
 			file:   file,
 			format: format,
