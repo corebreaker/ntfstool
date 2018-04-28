@@ -353,20 +353,20 @@ func do_remove_from(node_pattern string, arg *tActionArg) error {
 	var remover tRemover
 
 	remover.do = func(node *extract.Node) error {
-		src := node.File
-
 		for _, child := range node.Children {
 			if err := remover.do(child); err != nil {
 				return err
 			}
 		}
 
+		src := node.File
+
 		path := tree.GetNodePath(node)
 
 		fmt.Printf("Remove File `%s` (FileID=%s, RootID=%s)", path, src.Id, tree.GetRootID(src.Mft))
 		fmt.Println()
 
-		if err := file.DelRecordAt(int(src.Index)); err != nil {
+		if err := file.DelRecordWithId(src.Id); err != nil {
 			return err
 		}
 

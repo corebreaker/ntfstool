@@ -20,6 +20,7 @@ type IFile interface {
 	IsRoot() bool
 	IsFile() bool
 	IsDir() bool
+	SetName(string)
 
 	setParentIndex(*Index)
 }
@@ -36,6 +37,7 @@ func (*tNoneFile) IsDir() bool           { return false }
 func (*tNoneFile) GetFile() *File        { return nil }
 func (*tNoneFile) GetId() string         { return "" }
 func (*tNoneFile) GetIndex() int         { return 0 }
+func (*tNoneFile) SetName(string)        {}
 func (*tNoneFile) setParentIndex(*Index) {}
 
 type tFileError struct {

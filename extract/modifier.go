@@ -15,6 +15,15 @@ type FileModifier struct {
 	modified bool
 }
 
+func (self *FileModifier) getIndexWithId(id string) (int, error) {
+	res, found := self.index.IdMap[id]
+	if !found {
+		return 0, core.WrapError(fmt.Errorf("ID `%s` don't exist", id))
+	}
+
+	return int(res), nil
+}
+
 func (self *FileModifier) Close() (err error) {
 	defer func() {
 		e := self.writer.Close()
@@ -65,6 +74,15 @@ func (self *FileModifier) SetRecordAt(index int, rec IFile) error {
 	return self.writer.SetRecordAt(index, rec)
 }
 
+func (self *FileModifier) SetRecordWithId(id string, rec IFile) error {
+	idx, err := self.getIndexWithId(id)
+	if err != nil {
+		return err
+	}
+
+	return self.SetRecordAt(idx, rec)
+}
+
 func (self *FileModifier) ReadRecord(position int64) (IFile, error) {
 	rec, err := self.writer.ReadRecord(position)
 	if err != nil {
@@ -103,7 +121,17 @@ func (self *FileModifier) GetRecordAt(index int) (IFile, error) {
 	return res, nil
 }
 
+func (self *FileModifier) GetRecordWithId(id string) (IFile, error) {
+	idx, err := self.getIndexWithId(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return self.GetRecordAt(idx)
+}
+
 func (self *FileModifier) DelRecordAt(index int) error {
+	fmt.Println("<<<<<<< I=", index, " // ", len(self.index.IdMap), self.writer.GetCount())
 	old, err := self.GetRecordAt(index)
 	if err != nil {
 		return err
@@ -126,6 +154,15 @@ func (self *FileModifier) DelRecordAt(index int) error {
 	}()
 
 	return self.writer.DelRecordAt(index)
+}
+
+func (self *FileModifier) DelRecordWithId(id string) error {
+	idx, err := self.getIndexWithId(id)
+	if err != nil {
+		return err
+	}
+
+	return self.DelRecordAt(idx)
 }
 
 func (self *FileModifier) MakeFileStream() (FileStream, error) {

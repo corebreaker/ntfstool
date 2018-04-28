@@ -424,13 +424,20 @@ func do_show(index int64, arg *tActionArg) error {
 
 	defer core.DeferedCall(records.Close)
 
+	offsets := records.Offsets()
+
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
+	fmt.Println("Offset:", offsets[index])
+
+	if (0 > index) || (index >= int64(records.GetCount())) {
+		return nil
+	}
+
 	record, err := records.GetRecordAt(int(index))
 	if err != nil {
 		return err
 	}
-
-	fmt.Println()
-	fmt.Println("Format:", records.GetFormatName())
 
 	fmt.Println()
 	fmt.Println("Result:")

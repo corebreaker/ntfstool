@@ -13,55 +13,68 @@ import (
 )
 
 func do_show_id(id string, arg *tActionArg) error {
-	src, err := arg.GetInput()
-	if err != nil {
-		return err
+	var src *os.File
+	var err error
+
+	new_name, rename := arg.GetExt("rename")
+
+	if rename {
+		src, err = arg.GetFile()
+		if err != nil {
+			return err
+		}
+	} else {
+		src, err = arg.GetInput()
+		if err != nil {
+			return err
+		}
 	}
 
 	fmt.Println("Reading")
-	files, err := extract.MakeFileReader(src)
+	files, err := extract.MakeFileModifier(src)
 	if err != nil {
 		return err
 	}
 
 	defer core.DeferedCall(files.Close)
 
-	stream, err := files.MakeStream()
+	rec0, err := files.GetRecordAt(0)
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(stream.Close)
+	index, ok := rec0.(*extract.Index)
+	if !ok {
+		return core.WrapError(fmt.Errorf("Bad file format"))
+	}
 
-	for entry := range stream {
-		record := entry.Record()
-		file := record.GetFile()
-
-		if file == nil {
-			record.Print()
-
-			return nil
-		}
-
-		if file.Id != id {
-			continue
-		}
-
+	i, found := index.IdMap[id]
+	if !found {
 		fmt.Println()
-		fmt.Println("Index=   ", entry.Index())
-		fmt.Println("Is Dir?= ", record.IsDir())
-		fmt.Println("Is File?=", record.IsFile())
-		fmt.Println("Is Root?=", file.IsRoot())
+		fmt.Println("Id", id, "has not found.")
+	}
 
-		fmt.Println()
-		fmt.Println("Record:")
-		record.Print()
+	file, err := files.GetRecordAt(int(i))
+	if err != nil {
+		return err
+	}
 
-		return nil
+	if rename && (len(new_name) > 0) {
+		file.SetName(new_name)
+		if err := files.SetRecordAt(int(i), file); err != nil {
+			return err
+		}
 	}
 
 	fmt.Println()
-	fmt.Println("Id", id, "has not found.")
+	fmt.Println("Index=   ", file.GetIndex())
+	fmt.Println("Is Dir?= ", file.IsDir())
+	fmt.Println("Is File?=", file.IsFile())
+	fmt.Println("Is Root?=", file.IsRoot())
+
+	fmt.Println()
+	fmt.Println("Record:")
+	file.Print()
 
 	return nil
 }
@@ -176,7 +189,9 @@ func do_list_files(node_pattern string, arg *tActionArg) error {
 		if len(node_list) == 1 {
 			for _, n := range node_list {
 				if n.IsDir() {
-					msg = fmt.Sprintf("Results for %s:", n.File)
+                    path := tree.GetNodePath(n)
+                    root := tree.GetRootID(n.File.Mft)
+					msg = fmt.Sprintf("Results for %s (DirID=%s, RootID=%s):", path, n.File.Id, root)
 					node_list = n.Children
 				}
 			}

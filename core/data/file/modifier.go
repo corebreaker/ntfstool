@@ -282,6 +282,7 @@ func (self *DataModifier) ReadRecord(position int64) (data.IDataRecord, error) {
 }
 
 func (self *DataModifier) GetRecordAt(index int) (data.IDataRecord, error) {
+	fmt.Println("     << I=", index, " // ", len(self.positions), self.desc.Count, len(self.desc.Indexes))
 	if err := self.check(); err != nil {
 		return nil, err
 	}
@@ -310,7 +311,8 @@ func (self *DataModifier) DelRecordAt(index int) error {
 		return core.WrapError(fmt.Errorf("Bad index %d (limit= %d)", index, self.desc.Count))
 	}
 
-	old_start := self.desc.Indexes[index].Physical
+	old_idx := self.desc.Indexes[index]
+	old_start := old_idx.Physical
 	old_end := self.desc.Indexes[index+1].Physical
 	old_size := old_end - old_start
 
@@ -324,12 +326,18 @@ func (self *DataModifier) DelRecordAt(index int) error {
 		return err
 	}
 
+	self.position = old_start
+
+	indexes := self.desc.Indexes
+	null_idx := len(indexes) - 1
+
 	last := int(self.desc.Count) - 1
 	if index < last {
 		records := make([]data.IDataRecord, last-index)
-		indexes := self.desc.Indexes
 
-		buf := make([]byte, indexes[last].Physical-old_end)
+		trailer := indexes[null_idx]
+
+		buf := make([]byte, trailer.Physical-old_end)
 		if _, err := self.file.ReadAt(buf, old_end); err != nil {
 			return err
 		}
@@ -343,17 +351,17 @@ func (self *DataModifier) DelRecordAt(index int) error {
 				return err
 			}
 
-			fmt.Println(fmt.Sprintf(">> IDX:%d LST:%d I:%d LEN=%d POS=%d REM=%d", index, last, i, len(buf), p, dec_redear.Len()))
+			fmt.Println(fmt.Sprintf(">> P:%d IDX:%d LST:%d I:%d LEN=%d POS=%d REM=%d", old_end+p, index+i+1, last, i, len(buf), p, dec_redear.Len()))
 			r, err := core.ReadRecord(decoder)
 			if err != nil {
 				return err
 			}
+			fmt.Println("   ++", r)
 
 			records[i] = r
 		}
 
 		copy(indexes[index:], indexes[(index+1):])
-		self.position = old_start
 
 		for i, rec := range records {
 			indexes[index+i].Physical = self.position
@@ -363,8 +371,10 @@ func (self *DataModifier) DelRecordAt(index int) error {
 				return err
 			}
 		}
+
+		trailer.Physical = self.position
 	} else {
-		self.position = old_start
+		old_idx.Logical = -1
 	}
 
 	self.desc.Counts[old.GetEncodingCode()]--
@@ -375,7 +385,7 @@ func (self *DataModifier) DelRecordAt(index int) error {
 		delete(self.positions, pos)
 	}
 
-	self.desc.Indexes = self.desc.Indexes[:last]
+	self.desc.Indexes = indexes[:null_idx]
 
 	return nil
 }

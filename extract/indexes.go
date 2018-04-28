@@ -20,6 +20,7 @@ func (*Index) GetId() string           { return "" }
 func (*Index) GetIndex() int           { return 0 }
 func (*Index) GetEncodingCode() string { return "I" }
 func (*Index) setParentIndex(*Index)   {}
+func (*Index) SetName(string)          {}
 func (idx *Index) Print()              { fmt.Println(idx) }
 func (idx *Index) String() string      { return fmt.Sprintf("{File indexes:%d}", len(idx.IdMap)) }
 func (idx *Index) addFile(f *File)     { idx.IdMap[f.Id] = f.Index }
