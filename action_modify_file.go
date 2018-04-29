@@ -135,14 +135,30 @@ func do_move_to(node_pattern string, arg *tActionArg) error {
 		return ntfs.WrapError(fmt.Errorf("Destination directory `%s` not found", dir_id))
 	}
 
-	src_nodes := pattern.GetNodes()
+	var from_node *extract.Node
+
+	from := arg.GetFromParam()
+	if len(from) == 0 {
+		node, ok := tree.Nodes[from]
+		if !ok {
+			return ntfs.WrapError(fmt.Errorf("From ID `%s` not found", from))
+		}
+
+		if !node.IsDir() {
+			return ntfs.WrapError(fmt.Errorf("From ID `%s` is not a directory", from))
+		}
+
+		from_node = node
+	}
+
+	src_nodes := pattern.GetNodes(from_node)
 	if len(src_nodes) == 0 {
 		fmt.Println("No moved node")
 
 		return nil
 	}
 
-	for _, src_node := range pattern.GetNodes() {
+	for _, src_node := range src_nodes {
 		src := src_node.File
 
 		if _, exists := dir_node.Children[src.Name]; exists {
@@ -160,7 +176,7 @@ func do_move_to(node_pattern string, arg *tActionArg) error {
 		}
 	}
 
-	for _, src_node := range pattern.GetNodes() {
+	for _, src_node := range src_nodes {
 		src_path := tree.GetNodePath(src_node)
 		src := src_node.File
 
@@ -284,7 +300,23 @@ func do_copy_to(node_pattern string, arg *tActionArg) error {
 		return ntfs.WrapError(fmt.Errorf("Destination directory `%s` not found", dir_id))
 	}
 
-	src_nodes := pattern.GetNodes()
+	var from_node *extract.Node
+
+	from := arg.GetFromParam()
+	if len(from) == 0 {
+		node, ok := tree.Nodes[from]
+		if !ok {
+			return ntfs.WrapError(fmt.Errorf("From ID `%s` not found", from))
+		}
+
+		if !node.IsDir() {
+			return ntfs.WrapError(fmt.Errorf("From ID `%s` is not a directory", from))
+		}
+
+		from_node = node
+	}
+
+	src_nodes := pattern.GetNodes(from_node)
 	if len(src_nodes) == 0 {
 		fmt.Println("No removed node")
 
@@ -375,14 +407,30 @@ func do_remove_from(node_pattern string, arg *tActionArg) error {
 		return nil
 	}
 
-	src_nodes := pattern.GetNodes()
+	var from_node *extract.Node
+
+	from := arg.GetFromParam()
+	if len(from) == 0 {
+		node, ok := tree.Nodes[from]
+		if !ok {
+			return ntfs.WrapError(fmt.Errorf("From ID `%s` not found", from))
+		}
+
+		if !node.IsDir() {
+			return ntfs.WrapError(fmt.Errorf("From ID `%s` is not a directory", from))
+		}
+
+		from_node = node
+	}
+
+	src_nodes := pattern.GetNodes(from_node)
 	if len(src_nodes) == 0 {
 		fmt.Println("No removed node")
 
 		return nil
 	}
 
-	for _, src_node := range pattern.GetNodes() {
+	for _, src_node := range src_nodes {
 		if err := remover.do(src_node); err != nil {
 			return err
 		}

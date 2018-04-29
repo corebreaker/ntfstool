@@ -12,11 +12,16 @@ import (
 
 type tNodePattern struct {
 	tree  *extract.Tree
+	root  *extract.Node
 	ids   map[string]bool
 	globs []glob.Glob
 }
 
 func (np *tNodePattern) Match(file *extract.File) bool {
+	if file.Id == "" {
+		return false
+	}
+
 	if np.ids[file.Id] {
 		return true
 	}
@@ -33,14 +38,24 @@ func (np *tNodePattern) Match(file *extract.File) bool {
 	return false
 }
 
-func (np *tNodePattern) GetNodes() map[string]*extract.Node {
+func (np *tNodePattern) getNodes(node *extract.Node, to map[string]*extract.Node) {
+	for _, n := range node.Children {
+		np.getNodes(n, to)
+	}
+
+	if np.Match(node.File) {
+		to[node.File.Id] = node
+	}
+}
+
+func (np *tNodePattern) GetNodes(from *extract.Node) map[string]*extract.Node {
 	res := make(map[string]*extract.Node)
 
-	for _, node := range np.tree.Nodes {
-		if np.Match(node.File) {
-			res[node.File.Id] = node
-		}
+	if from == nil {
+		from = np.root
 	}
+
+	np.getNodes(from, res)
 
 	return res
 }
@@ -75,6 +90,10 @@ func parseNodePattern(src string, tree *extract.Tree) (*tNodePattern, error) {
 		tree:  tree,
 		ids:   ids,
 		globs: globs,
+		root: &extract.Node{
+			File:     new(extract.File),
+			Children: tree.Roots,
+		},
 	}
 
 	return res, nil

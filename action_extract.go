@@ -185,7 +185,23 @@ func do_list_files(node_pattern string, arg *tActionArg) error {
 			return err
 		}
 
-		node_list = matcher.GetNodes()
+		var from_node *extract.Node
+
+		from := arg.GetFromParam()
+		if len(from) == 0 {
+			node, ok := tree.Nodes[from]
+			if !ok {
+				return ntfs.WrapError(fmt.Errorf("From ID `%s` not found", from))
+			}
+
+			if !node.IsDir() {
+				return ntfs.WrapError(fmt.Errorf("From ID `%s` is not a directory", from))
+			}
+
+			from_node = node
+		}
+
+		node_list = matcher.GetNodes(from_node)
 		if len(node_list) == 1 {
 			for _, n := range node_list {
 				if n.IsDir() {
