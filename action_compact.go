@@ -52,7 +52,7 @@ func do_compact(arg *tActionArg) error {
 			records = append(records, rec)
 		}
 
-		fmt.Println("\rDone.")
+		fmt.Println("\rDone.      ")
 
 		return nil
 	}()
@@ -81,7 +81,7 @@ func do_compact(arg *tActionArg) error {
 		}
 	}
 
-	fmt.Println("\rDone.")
+	fmt.Println("\rDone.      ")
 
 	return nil
 }
