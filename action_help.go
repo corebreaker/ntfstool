@@ -55,6 +55,7 @@ Commands to explore the input file:
   - find-state:      find a record in the input file in state format
   - show-attr=attr   shows the attribute from its position for a state file record in the input file
   - check:           checks the integrity of data structures in the input file in the state format
+  - compact:         compacts the input file
 
 Commands to explore or modify a file in file node format:
   - id=file-id:      shows the record with file ID in the input file in file node format
@@ -82,7 +83,7 @@ Offset has unit suffixes:
 it is a comma separated list of node expressions:
 nodes = expression[,expression[,...]]
 
-A node expression is either an ID prefixed with `+"`@`"+` (ie: @ffbb5d4c2afe41e8949117d8743af40d),
+A node expression is either an ID prefixed with ` + "`@`" + ` (ie: @ffbb5d4c2afe41e8949117d8743af40d),
 either a "glob" expression (cf: http://github.com/gobwas/glob).
 `)
 	fmt.Println("Show the content of the MBR:", prog, "(with no parameter)")

@@ -44,6 +44,7 @@ var (
 		tStringActionDef{handler: do_copy_to, name: "cp"},
 		tStringActionDef{handler: do_remove_from, name: "rm"},
 		tStringActionDef{handler: do_make_dir, name: "mkdir"},
+		tDefaultActionDef{handler: do_compact, name: "compact"},
 
 		// Commands to use partition with the help of input/output files
 		tConfigActionDef{handler: do_open_disk},
