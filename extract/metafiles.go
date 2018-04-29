@@ -1,6 +1,6 @@
 package extract
 
-var meta_files = map[string]bool{
+var metafiles = map[string]bool{
 	"$MFT":     true,
 	"$MFTMirr": true,
 	"$LogFile": true,
@@ -23,5 +23,5 @@ func IsMetaFile(file *File) bool {
 		return false
 	}
 
-	return meta_files[file.Name]
+	return metafiles[file.Name]
 }

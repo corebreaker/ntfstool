@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"essai/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core"
 )
 
 const BUFFER_SIZE int64 = 100 * 1024 * 1024

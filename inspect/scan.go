@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"essai/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core"
 )
 
 func Scan(name string, destination *os.File) error {

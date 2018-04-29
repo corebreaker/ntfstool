@@ -3,7 +3,7 @@ package file
 import (
 	"os"
 
-	"essai/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core"
 )
 
 type tSysErr string

@@ -3,7 +3,7 @@ package file
 import (
 	"fmt"
 
-	"essai/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core"
 
 	"github.com/DeDiS/protobuf"
 )

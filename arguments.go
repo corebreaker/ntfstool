@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	ntfs "essai/ntfstool/core"
-	"essai/ntfstool/inspect"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
 type tActionType byte
@@ -27,7 +27,7 @@ type tActionArg struct {
 	dest      *os.File
 	file      *os.File
 	from      string
-	into        string
+	into      string
 	_args     ntfs.Args
 }
 

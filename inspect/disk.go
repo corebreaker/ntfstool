@@ -1,8 +1,8 @@
 package inspect
 
 import (
-	"essai/ntfstool/core"
-	"essai/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
 )
 
 type NtfsDisk struct {

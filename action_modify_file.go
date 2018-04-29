@@ -3,13 +3,13 @@ package main
 import (
 	"fmt"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/extract"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/extract"
 )
 
 func do_make_dir(name string, arg *tActionArg) error {
 	if len(name) == 0 {
-		return core.WrapError(fmt.Errorf("No name specified for the new directory"))
+		return ntfs.WrapError(fmt.Errorf("No name specified for the new directory"))
 	}
 
 	src, err := arg.GetFile()
@@ -23,7 +23,7 @@ func do_make_dir(name string, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(file.Close)
+	defer ntfs.DeferedCall(file.Close)
 
 	tree, err := extract.MakeTree(file)
 	if err != nil {
@@ -47,24 +47,24 @@ func do_make_dir(name string, arg *tActionArg) error {
 		}
 
 		if len(parent_id) == 0 {
-			return core.WrapError(fmt.Errorf("No parent specified"))
+			return ntfs.WrapError(fmt.Errorf("No parent specified"))
 		}
 	}
 
 	parent_node, ok := tree.Nodes[parent_id]
 	if !ok {
-		return core.WrapError(fmt.Errorf("Parent `%s` not found", parent_id))
+		return ntfs.WrapError(fmt.Errorf("Parent `%s` not found", parent_id))
 	}
 
 	if _, exists := parent_node.Children[name]; exists {
-		return core.WrapError(fmt.Errorf("Name `%s` already exists in `%s`", name, parent_node.File))
+		return ntfs.WrapError(fmt.Errorf("Name `%s` already exists in `%s`", name, parent_node.File))
 	}
 
 	parent_path := tree.GetNodePath(parent_node)
 	parent := parent_node.File
 
 	res := &extract.File{
-		Id:        core.NewFileId(),
+		Id:        ntfs.NewFileId(),
 		Mft:       parent.Mft,
 		Parent:    parent.Id,
 		ParentIdx: parent.Index,
@@ -83,7 +83,7 @@ func do_make_dir(name string, arg *tActionArg) error {
 
 func do_move_to(node_pattern string, arg *tActionArg) error {
 	if len(node_pattern) == 0 {
-		return core.WrapError(fmt.Errorf("No file id specified"))
+		return ntfs.WrapError(fmt.Errorf("No file id specified"))
 	}
 
 	src_file, err := arg.GetFile()
@@ -97,7 +97,7 @@ func do_move_to(node_pattern string, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(file.Close)
+	defer ntfs.DeferedCall(file.Close)
 
 	tree, err := extract.MakeTree(file)
 	if err != nil {
@@ -126,13 +126,13 @@ func do_move_to(node_pattern string, arg *tActionArg) error {
 		}
 
 		if len(dir_id) == 0 {
-			return core.WrapError(fmt.Errorf("No destination directory id specified for the new directory"))
+			return ntfs.WrapError(fmt.Errorf("No destination directory id specified for the new directory"))
 		}
 	}
 
 	dir_node, ok := tree.Nodes[dir_id]
 	if !ok {
-		return core.WrapError(fmt.Errorf("Destination directory `%s` not found", dir_id))
+		return ntfs.WrapError(fmt.Errorf("Destination directory `%s` not found", dir_id))
 	}
 
 	src_nodes := pattern.GetNodes()
@@ -156,7 +156,7 @@ func do_move_to(node_pattern string, arg *tActionArg) error {
 			d := dir_node.File
 			dr := tree.GetRootID(d.Mft)
 
-			return core.WrapError(fmt.Errorf(msg, f.Name, src_path, f.Id, fr, dir_path, d.Id, dr))
+			return ntfs.WrapError(fmt.Errorf(msg, f.Name, src_path, f.Id, fr, dir_path, d.Id, dr))
 		}
 	}
 
@@ -185,7 +185,7 @@ func do_move_to(node_pattern string, arg *tActionArg) error {
 
 func do_copy_to(node_pattern string, arg *tActionArg) error {
 	if len(node_pattern) == 0 {
-		return core.WrapError(fmt.Errorf("No file id specified"))
+		return ntfs.WrapError(fmt.Errorf("No file id specified"))
 	}
 
 	src_file, err := arg.GetFile()
@@ -199,7 +199,7 @@ func do_copy_to(node_pattern string, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(file.Close)
+	defer ntfs.DeferedCall(file.Close)
 
 	tree, err := extract.MakeTree(file)
 	if err != nil {
@@ -222,7 +222,7 @@ func do_copy_to(node_pattern string, arg *tActionArg) error {
 		src, dir := src_node.File, dir_node.File
 
 		res := &extract.File{
-			Id:        core.NewFileId(),
+			Id:        ntfs.NewFileId(),
 			Parent:    dir.Id,
 			ParentIdx: dir.Index,
 			Index:     int64(file.GetCount()),
@@ -275,13 +275,13 @@ func do_copy_to(node_pattern string, arg *tActionArg) error {
 		}
 
 		if len(dir_id) == 0 {
-			return core.WrapError(fmt.Errorf("No destination directory id specified for the new directory"))
+			return ntfs.WrapError(fmt.Errorf("No destination directory id specified for the new directory"))
 		}
 	}
 
 	dir_node, ok := tree.Nodes[dir_id]
 	if !ok {
-		return core.WrapError(fmt.Errorf("Destination directory `%s` not found", dir_id))
+		return ntfs.WrapError(fmt.Errorf("Destination directory `%s` not found", dir_id))
 	}
 
 	src_nodes := pattern.GetNodes()
@@ -305,7 +305,7 @@ func do_copy_to(node_pattern string, arg *tActionArg) error {
 			d := dir_node.File
 			dr := tree.GetRootID(d.Mft)
 
-			return core.WrapError(fmt.Errorf(msg, f.Name, src_path, f.Id, fr, dir_path, d.Id, dr))
+			return ntfs.WrapError(fmt.Errorf(msg, f.Name, src_path, f.Id, fr, dir_path, d.Id, dr))
 		}
 	}
 
@@ -320,7 +320,7 @@ func do_copy_to(node_pattern string, arg *tActionArg) error {
 
 func do_remove_from(node_pattern string, arg *tActionArg) error {
 	if len(node_pattern) == 0 {
-		return core.WrapError(fmt.Errorf("No file id specified"))
+		return ntfs.WrapError(fmt.Errorf("No file id specified"))
 	}
 
 	src_file, err := arg.GetFile()
@@ -334,7 +334,7 @@ func do_remove_from(node_pattern string, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(file.Close)
+	defer ntfs.DeferedCall(file.Close)
 
 	tree, err := extract.MakeTree(file)
 	if err != nil {

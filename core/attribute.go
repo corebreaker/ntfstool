@@ -8,7 +8,7 @@ import (
 	sysio "io"
 	"reflect"
 
-	"essai/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/core/data"
 )
 
 type tAttributeTypeInfo struct {

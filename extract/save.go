@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"essai/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core"
 )
 
 func SaveNode(from_disk *core.DiskIO, node *Node, to_path string, noempty, nometa bool) (int64, error) {

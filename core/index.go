@@ -3,7 +3,7 @@ package core
 import (
 	"fmt"
 
-	"essai/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/core/data"
 )
 
 type DirFlag uint32

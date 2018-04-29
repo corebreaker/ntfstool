@@ -1,8 +1,9 @@
 package inspect
 
 import (
-	"essai/ntfstool/core"
 	"sort"
+
+	"github.com/corebreaker/ntfstool/core"
 )
 
 type tAttributeList struct {

@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/core/data"
-	"essai/ntfstool/core/data/codec"
-	"essai/ntfstool/core/data/file"
-	"essai/ntfstool/extract"
-	"essai/ntfstool/inspect"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/core/data/codec"
+	"github.com/corebreaker/ntfstool/core/data/file"
+	"github.com/corebreaker/ntfstool/extract"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
 type tReader struct {
@@ -118,12 +118,12 @@ func (r *tRecord) UnmarshalBinary(data []byte) error {
 
 	i, err := strconv.Atoi(parts[0])
 	if err != nil {
-		return core.WrapError(err)
+		return ntfs.WrapError(err)
 	}
 
 	j, err := strconv.Atoi(parts[1])
 	if err != nil {
-		return core.WrapError(err)
+		return ntfs.WrapError(err)
 	}
 
 	r.I, r.J = i, j
@@ -161,15 +161,15 @@ func work() error {
 	flag.Parse()
 
 	if *filename == "" {
-		return core.WrapError(fmt.Errorf("No file specified"))
+		return ntfs.WrapError(fmt.Errorf("No file specified"))
 	}
 
 	if *is_record {
 		b := MakeBuffer(102400, file.GetRegistry("Example"))
 		rd := func(name string) error {
-			f1, err := core.OpenFile(*filename+name, core.OPEN_RDONLY)
+			f1, err := ntfs.OpenFile(*filename+name, ntfs.OPEN_RDONLY)
 			if err != nil {
-				return core.WrapError(err)
+				return ntfs.WrapError(err)
 			}
 
 			defer f1.Close()
@@ -177,7 +177,7 @@ func work() error {
 			b.Reset()
 			_, err = f1.Read(b.Get(102400))
 			if err != nil {
-				return core.WrapError(err)
+				return ntfs.WrapError(err)
 			}
 
 			return nil
@@ -187,7 +187,7 @@ func work() error {
 			return err
 		}
 
-		rec, err := core.ReadRecord(b)
+		rec, err := ntfs.ReadRecord(b)
 		if err != nil {
 			return err
 		}
@@ -198,7 +198,7 @@ func work() error {
 			return err
 		}
 
-		rec, err = core.ReadRecord(b)
+		rec, err = ntfs.ReadRecord(b)
 		if err != nil {
 			return err
 		}
@@ -209,7 +209,7 @@ func work() error {
 	}
 
 	if *is_record2 {
-		f, err := core.OpenFile(*filename, core.OPEN_RDONLY)
+		f, err := ntfs.OpenFile(*filename, ntfs.OPEN_RDONLY)
 		if err != nil {
 			return err
 		}
@@ -221,13 +221,13 @@ func work() error {
 		d := codec.MakeDecoder(r, file.GetRegistry("Example"))
 		dec := d.ToCoreDecoder()
 
-		rec, err := core.ReadRecord(dec)
+		rec, err := ntfs.ReadRecord(dec)
 		if err != nil {
 			return err
 		}
 
 		fmt.Println("Result=", rec, r.i)
-		rec, err = core.ReadRecord(dec)
+		rec, err = ntfs.ReadRecord(dec)
 		if err != nil {
 			return err
 		}
@@ -287,7 +287,7 @@ func work() error {
 		return err
 	}
 
-	defer core.DeferedCall(f.Close)
+	defer ntfs.DeferedCall(f.Close)
 
 	for i, v := range flag.Args() {
 		parts := strings.Split(v, ":")
@@ -335,5 +335,5 @@ func work() error {
 }
 
 func main() {
-	core.CheckedMain(work)
+	ntfs.CheckedMain(work)
 }

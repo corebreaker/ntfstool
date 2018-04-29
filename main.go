@@ -5,7 +5,7 @@ import (
 	"os"
 	"runtime"
 
-	ntfs "essai/ntfstool/core"
+	ntfs "github.com/corebreaker/ntfstool/core"
 )
 
 func work() error {

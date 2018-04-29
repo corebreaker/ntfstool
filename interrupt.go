@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 
-	"essai/ntfstool/core"
+	ntfs "github.com/corebreaker/ntfstool/core"
 )
 
 var _stk [100]error
@@ -22,12 +22,12 @@ func init() {
 				continue
 			}
 
-			fmt.Println("  -", core.GetSource(x))
+			fmt.Println("  -", ntfs.GetSource(x))
 		}
 
 		fmt.Println()
 
-		core.PrintError(_stk[0])
+		ntfs.PrintError(_stk[0])
 
 		os.Exit(1)
 	}()
@@ -35,5 +35,5 @@ func init() {
 
 func addstep(msg string, a ...interface{}) {
 	copy(_stk[1:], _stk[:])
-	_stk[0] = core.WrapError(fmt.Errorf(msg, a...))
+	_stk[0] = ntfs.WrapError(fmt.Errorf(msg, a...))
 }

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/core/data"
-	"essai/ntfstool/extract"
-	"essai/ntfstool/inspect"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/extract"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
 func do_mkfilelist(verbose bool, arg *tActionArg) error {
@@ -23,7 +23,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(reader.Close)
+	defer ntfs.DeferedCall(reader.Close)
 
 	stream, err := reader.MakeStream()
 	if err != nil {
@@ -110,7 +110,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 			fidxs: make(map[data.FileIndex]*tFileId),
 			files: make(map[string]*tNode),
 			lost: new_node(&extract.File{
-				Id:   core.NewFileId(),
+				Id:   ntfs.NewFileId(),
 				Mft:  id,
 				Name: "lost+found",
 			}),
@@ -171,7 +171,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 			no_mft++
 
 			fmt.Fprintln(&log, "No MFT for record:")
-			core.FprintStruct(&log, rec)
+			ntfs.FprintStruct(&log, rec)
 			fmt.Fprintln(&log)
 		}
 
@@ -200,7 +200,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 
 	for mftid, mft := range mfts {
 		if mft.state == nil {
-			return core.WrapError(fmt.Errorf("No MFT with ID=%s", mftid))
+			return ntfs.WrapError(fmt.Errorf("No MFT with ID=%s", mftid))
 		}
 
 		origin := mft.state.PartOrigin
@@ -209,18 +209,18 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 			fmt.Printf("\rDone: %d %%", 100*i/cnt)
 			i++
 
-			id := core.NewFileId()
+			id := ntfs.NewFileId()
 			is_dir := file.IsDir()
 			position := file.Position
 
 			ref := file.Reference
 			name := file.Name
 
-			var runlist core.RunList
+			var runlist ntfs.RunList
 			var size uint64
 
 			if !is_dir {
-				attrs := file.GetAttributes(core.ATTR_DATA)
+				attrs := file.GetAttributes(ntfs.ATTR_DATA)
 				if len(attrs) == 0 {
 					continue
 				}
@@ -292,7 +292,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 			}
 
 			mft.root = new_node(&extract.File{
-				Id:      core.NewFileId(),
+				Id:      ntfs.NewFileId(),
 				FileRef: data.MakeFileRef(seq, 5),
 				Mft:     mftid,
 				Name:    ".",
@@ -392,7 +392,7 @@ func do_mkfilelist(verbose bool, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(writer.Close)
+	defer ntfs.DeferedCall(writer.Close)
 
 	writer.WriteTree(&tree, func(cur, tot int) {
 		fmt.Printf("\rDone: %d %%", 100*cur/tot)

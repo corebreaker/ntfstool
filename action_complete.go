@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/core/data"
-	"essai/ntfstool/inspect"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
 func do_complete(arg *tActionArg) error {
@@ -21,14 +21,14 @@ func do_complete(arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
 	stream, err := states.MakeStream()
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
 	var files []*inspect.StateFileRecord
 	var records []inspect.IStateRecord
@@ -90,7 +90,7 @@ func do_complete(arg *tActionArg) error {
 		for ii := 0; entry != nil; ii++ {
 			var out bytes.Buffer
 
-			core.FprintStruct(&out, entry)
+			ntfs.FprintStruct(&out, entry)
 
 			mft.files[entry.FileReferenceNumber] = &tDirEntry{
 				name: entry.Name,
@@ -157,7 +157,7 @@ func do_complete(arg *tActionArg) error {
 			continue
 		}
 
-		var record core.FileRecord
+		var record ntfs.FileRecord
 
 		arg.disk.SetStart(mft.state.PartOrigin)
 		arg.disk.SetMftShift(int64(mft.state.RunList[0].Start) * 4096)
@@ -214,7 +214,7 @@ func do_complete(arg *tActionArg) error {
 			fname := ""
 
 			for _, attr := range file.Attributes {
-				if attr.Header.AttributeType != core.ATTR_FILE_NAME {
+				if attr.Header.AttributeType != ntfs.ATTR_FILE_NAME {
 					continue
 				}
 
@@ -274,7 +274,7 @@ func do_complete(arg *tActionArg) error {
 		for idx, dir := range mft.dirs {
 			progress()
 
-			attrs := dir.GetAttributes(core.ATTR_INDEX_ROOT, core.ATTR_INDEX_ALLOCATION)
+			attrs := dir.GetAttributes(ntfs.ATTR_INDEX_ROOT, ntfs.ATTR_INDEX_ALLOCATION)
 			if len(attrs) == 0 {
 				to_remove[dir] = true
 				continue
@@ -364,7 +364,7 @@ func do_complete(arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(writer.Close)
+	defer ntfs.DeferedCall(writer.Close)
 
 	fmt.Println()
 	fmt.Println("Writing")

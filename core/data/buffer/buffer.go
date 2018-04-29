@@ -3,7 +3,7 @@ package buffer
 import (
 	"io"
 
-	"essai/ntfstool/core/data/codec"
+	"github.com/corebreaker/ntfstool/core/data/codec"
 )
 
 type tBufData struct {

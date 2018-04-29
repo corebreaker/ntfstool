@@ -9,7 +9,7 @@ import (
 
 	"github.com/DeDiS/protobuf"
 
-	"essai/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core"
 )
 
 type Encoder struct {

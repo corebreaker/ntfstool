@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/inspect"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
 func do_find_state(arg *tActionArg) error {
@@ -20,14 +20,14 @@ func do_find_state(arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
 	stream, err := states.MakeStream()
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
 	position, pos_ok := arg.IdxExt("position")
 

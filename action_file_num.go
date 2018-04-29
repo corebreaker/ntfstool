@@ -6,7 +6,7 @@ import (
 	"sort"
 	"syscall"
 
-	ntfs "essai/ntfstool/core"
+	ntfs "github.com/corebreaker/ntfstool/core"
 )
 
 func do_file_num(file int64, arg *tActionArg) error {

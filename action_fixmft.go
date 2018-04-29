@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/inspect"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
 func do_fixmft(verbose bool, arg *tActionArg) error {
@@ -21,7 +21,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
 	stream, err := states.MakeStream()
 	if err != nil {
@@ -84,7 +84,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 			file_state := state.(*inspect.StateFileRecord)
 			file_pos := file_state.Position
 
-			attr_list := file_state.GetAttributes(core.ATTR_DATA, core.ATTR_FILE_NAME)
+			attr_list := file_state.GetAttributes(ntfs.ATTR_DATA, ntfs.ATTR_FILE_NAME)
 			if len(attr_list) < 2 {
 				continue
 			}
@@ -92,7 +92,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 			data_attr, fname_attr := attr_list[0], attr_list[1]
 			mft_pos := file_pos
 
-			get_attr := func(rec *core.FileRecord, atype core.AttributeType) (*core.AttributeDesc, error) {
+			get_attr := func(rec *ntfs.FileRecord, atype ntfs.AttributeType) (*ntfs.AttributeDesc, error) {
 				attrs, err := rec.GetAttributes(false)
 				if err != nil {
 					return nil, err
@@ -156,7 +156,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 						return false, false, nil
 					}
 
-					var record core.FileRecord
+					var record ntfs.FileRecord
 
 					err := func() error {
 						disk := arg.disk.GetDisk()
@@ -179,7 +179,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 						return false, true, nil
 					}
 
-					attr, err := get_attr(&record, core.ATTR_FILE_NAME)
+					attr, err := get_attr(&record, ntfs.ATTR_FILE_NAME)
 					if err != nil {
 						return false, false, err
 					}
@@ -211,7 +211,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 
 			mft_state := file_state
 			if is_mirror {
-				var record0, record1 core.FileRecord
+				var record0, record1 ntfs.FileRecord
 
 				err := func() error {
 					disk := arg.disk.GetDisk()
@@ -235,12 +235,12 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 				}
 
 				ok, err := func() (bool, error) {
-					attr0, err := get_attr(&record0, core.ATTR_DATA)
+					attr0, err := get_attr(&record0, ntfs.ATTR_DATA)
 					if err != nil {
 						return false, err
 					}
 
-					attr1, err := get_attr(&record1, core.ATTR_DATA)
+					attr1, err := get_attr(&record1, ntfs.ATTR_DATA)
 					if err != nil {
 						return false, err
 					}
@@ -262,7 +262,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 						return true, nil
 					}
 
-					var mft_record core.FileRecord
+					var mft_record ntfs.FileRecord
 
 					state, err := func() (*inspect.StateFileRecord, error) {
 						disk := arg.disk.GetDisk()
@@ -298,7 +298,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 						return false, nil
 					}
 
-					attrs := state.GetAttributes(core.ATTR_DATA)
+					attrs := state.GetAttributes(ntfs.ATTR_DATA)
 					if len(attrs) == 0 {
 						return false, nil
 					}
@@ -448,7 +448,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(writer.Close)
+	defer ntfs.DeferedCall(writer.Close)
 
 	cnt = len(records)
 	no_mft := 0
@@ -457,7 +457,7 @@ func do_fixmft(verbose bool, arg *tActionArg) error {
 	for i, state := range records {
 		fmt.Printf("\rDone: %d %%", 100*i/cnt)
 
-		if (state.GetHeader().Type == core.RECTYP_FILE) && (len(state.GetMftId()) == 0) {
+		if (state.GetHeader().Type == ntfs.RECTYP_FILE) && (len(state.GetMftId()) == 0) {
 			no_mft++
 
 			fmt.Fprintf(&log, "No MFT for position %d", state.GetPosition())

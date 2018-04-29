@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"essai/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/core/data"
 )
 
 type RecordType uint32

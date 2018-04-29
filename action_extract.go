@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/core/data"
-	"essai/ntfstool/extract"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/extract"
 
 	"github.com/siddontang/go/ioutil2"
 )
@@ -36,7 +36,7 @@ func do_show_id(id string, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(files.Close)
+	defer ntfs.DeferedCall(files.Close)
 
 	rec0, err := files.GetRecordAt(0)
 	if err != nil {
@@ -45,7 +45,7 @@ func do_show_id(id string, arg *tActionArg) error {
 
 	index, ok := rec0.(*extract.Index)
 	if !ok {
-		return core.WrapError(fmt.Errorf("Bad file format"))
+		return ntfs.WrapError(fmt.Errorf("Bad file format"))
 	}
 
 	i, found := index.IdMap[id]
@@ -91,14 +91,14 @@ func do_show_parent(id string, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(files.Close)
+	defer ntfs.DeferedCall(files.Close)
 
 	stream, err := files.MakeStream()
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
 	fmt.Println()
 	fmt.Println("Results:")
@@ -121,7 +121,7 @@ func do_show_parent(id string, arg *tActionArg) error {
 func do_show_parent_ref(ref int64, arg *tActionArg) error {
 	mft, has_mft := arg.GetExt("with-mft")
 	if !has_mft {
-		return core.WrapError(fmt.Errorf("MFT Id is missing"))
+		return ntfs.WrapError(fmt.Errorf("MFT Id is missing"))
 	}
 
 	src, err := arg.GetInput()
@@ -135,14 +135,14 @@ func do_show_parent_ref(ref int64, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(files.Close)
+	defer ntfs.DeferedCall(files.Close)
 
 	stream, err := files.MakeStream()
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
 	file_idx := data.FileIndex(ref)
 
@@ -189,8 +189,8 @@ func do_list_files(node_pattern string, arg *tActionArg) error {
 		if len(node_list) == 1 {
 			for _, n := range node_list {
 				if n.IsDir() {
-                    path := tree.GetNodePath(n)
-                    root := tree.GetRootID(n.File.Mft)
+					path := tree.GetNodePath(n)
+					root := tree.GetRootID(n.File.Mft)
 					msg = fmt.Sprintf("Results for %s (DirID=%s, RootID=%s):", path, n.File.Id, root)
 					node_list = n.Children
 				}
@@ -239,7 +239,7 @@ func do_save_file(file string, arg *tActionArg) error {
 
 	node, ok := tree.Nodes[file]
 	if !ok {
-		return core.WrapError(fmt.Errorf("Bad ID: %d", file))
+		return ntfs.WrapError(fmt.Errorf("Bad ID: %d", file))
 	}
 
 	destname := strings.TrimRight(dest, string([]rune{os.PathSeparator}))
@@ -251,20 +251,20 @@ func do_save_file(file string, arg *tActionArg) error {
 	if ioutil2.FileExists(destname) {
 		infos, err := os.Stat(destname)
 		if err != nil {
-			return core.WrapError(err)
+			return ntfs.WrapError(err)
 		}
 
 		if !infos.IsDir() {
-			return core.WrapError(fmt.Errorf("Path `%s` is a file, not a directory.", destname))
+			return ntfs.WrapError(fmt.Errorf("Path `%s` is a file, not a directory.", destname))
 		}
 	} else {
 		if err := os.MkdirAll(destname, 0770); err != nil {
-			return core.WrapError(err)
+			return ntfs.WrapError(err)
 		}
 	}
 
 	disk := arg.disk.GetDisk()
-	defer core.DeferedCall(disk.Close)
+	defer ntfs.DeferedCall(disk.Close)
 
 	_, noempty := arg.GetExt("noempty")
 	_, nometa := arg.GetExt("nometa")

@@ -5,9 +5,9 @@ import (
 	"os"
 	"reflect"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/core/data"
-	datafile "essai/ntfstool/core/data/file"
+	"github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	datafile "github.com/corebreaker/ntfstool/core/data/file"
 )
 
 const FILENODES_FORMAT_NAME = "File nodes"

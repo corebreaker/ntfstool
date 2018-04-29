@@ -7,10 +7,10 @@ import (
 
 	"github.com/siddontang/go/ioutil2"
 
-	ntfs "essai/ntfstool/core"
-	"essai/ntfstool/core/data"
-	datafile "essai/ntfstool/core/data/file"
-	"essai/ntfstool/inspect"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	datafile "github.com/corebreaker/ntfstool/core/data/file"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
 var (

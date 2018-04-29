@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"essai/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/core/data"
 )
 
 var recordType = reflect.TypeOf((*data.IDataRecord)(nil)).Elem()

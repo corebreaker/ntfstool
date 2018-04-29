@@ -3,7 +3,7 @@ package extract
 import (
 	"fmt"
 
-	datafile "essai/ntfstool/core/data/file"
+	datafile "github.com/corebreaker/ntfstool/core/data/file"
 )
 
 type Index struct {

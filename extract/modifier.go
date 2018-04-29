@@ -5,8 +5,8 @@ import (
 	"os"
 	"reflect"
 
-	"essai/ntfstool/core"
-	datafile "essai/ntfstool/core/data/file"
+	"github.com/corebreaker/ntfstool/core"
+	datafile "github.com/corebreaker/ntfstool/core/data/file"
 )
 
 type FileModifier struct {

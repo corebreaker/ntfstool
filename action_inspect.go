@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/core/data"
-	datafile "essai/ntfstool/core/data/file"
-	"essai/ntfstool/inspect"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	datafile "github.com/corebreaker/ntfstool/core/data/file"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
 func do_fillinfo(arg *tActionArg) error {
@@ -22,24 +22,24 @@ func do_fillinfo(arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
 	disk := arg.disk.GetDisk()
-	defer core.DeferedCall(disk.Close)
+	defer ntfs.DeferedCall(disk.Close)
 
 	stream, err := states.MakeStream()
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
 	writer, err := inspect.MakeStateWriter(dest)
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(writer.Close)
+	defer ntfs.DeferedCall(writer.Close)
 
 	i, cnt := 0, states.GetCount()
 	idx_count, idx_good := 0, 0
@@ -76,7 +76,7 @@ func do_fillinfo(arg *tActionArg) error {
 		if ok {
 			if rectyp == inspect.STATE_RECORD_TYPE_FILE {
 				rec := state.(*inspect.StateFileRecord)
-				attrs := rec.GetAttributes(core.ATTR_DATA)
+				attrs := rec.GetAttributes(ntfs.ATTR_DATA)
 				if len(attrs) == 0 {
 					no_data++
 
@@ -87,7 +87,7 @@ func do_fillinfo(arg *tActionArg) error {
 					resident_datas++
 				}
 
-				attrs = rec.GetAttributes(core.ATTR_FILE_NAME)
+				attrs = rec.GetAttributes(ntfs.ATTR_FILE_NAME)
 				if len(attrs) == 0 {
 					no_name++
 				}
@@ -133,7 +133,7 @@ func do_check(verbose bool, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
 	stream, err := states.MakeStream()
 	if err != nil {
@@ -167,11 +167,11 @@ func do_check(verbose bool, arg *tActionArg) error {
 
 		r := record.(*inspect.StateFileRecord)
 		for n, attr := range r.Attributes {
-			if attr.Header.AttributeType != core.ATTR_FILE_NAME {
+			if attr.Header.AttributeType != ntfs.ATTR_FILE_NAME {
 				continue
 			}
 
-			if attr.Header.NonResident != core.BOOL_FALSE {
+			if attr.Header.NonResident != ntfs.BOOL_FALSE {
 				msg := fmt.Sprintf("  - Nonresident found at %d [record %d, attribute %d]", r.Position, item.Index(), n)
 				non_resident_names = append(non_resident_names, msg)
 			}
@@ -228,14 +228,14 @@ func do_shownames(arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(reader.Close)
+	defer ntfs.DeferedCall(reader.Close)
 
 	stream, err := reader.MakeStream()
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
 	fmt.Println("Result")
 	for item := range stream {
@@ -265,14 +265,14 @@ func do_listnames(arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
 	stream, err := states.MakeStream()
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
 	i := 0
 
@@ -323,7 +323,7 @@ func do_position(position int64, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(records.Close)
+	defer ntfs.DeferedCall(records.Close)
 
 	record, err := records.ReadRecord(position)
 	if err != nil {
@@ -341,7 +341,7 @@ func do_position(position int64, arg *tActionArg) error {
 	if ok {
 		fmt.Println()
 		fmt.Println("Data:")
-		core.PrintBytes(file.Header.Data[:])
+		ntfs.PrintBytes(file.Header.Data[:])
 	}
 
 	return nil
@@ -359,7 +359,7 @@ func do_show_attribute(attribute_position int64, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(records.Close)
+	defer ntfs.DeferedCall(records.Close)
 
 	var state data.IDataRecord
 
@@ -381,12 +381,12 @@ func do_show_attribute(attribute_position int64, arg *tActionArg) error {
 
 	file, ok := state.(*inspect.StateFileRecord)
 	if !ok {
-		return core.WrapError(fmt.Errorf("Bad record type"))
+		return ntfs.WrapError(fmt.Errorf("Bad record type"))
 	}
 
 	attr := file.GetAttribute(attribute_position)
 	if attr == nil {
-		return core.WrapError(fmt.Errorf("Attribute not found"))
+		return ntfs.WrapError(fmt.Errorf("Attribute not found"))
 	}
 
 	desc, err := file.GetAttributeDesc(attr)
@@ -401,11 +401,11 @@ func do_show_attribute(attribute_position int64, arg *tActionArg) error {
 
 	fmt.Println()
 	fmt.Println("File:")
-	core.PrintStruct(desc)
+	ntfs.PrintStruct(desc)
 
 	fmt.Println()
 	fmt.Println("Value:")
-	core.PrintStruct(val)
+	ntfs.PrintStruct(val)
 
 	return nil
 }
@@ -422,7 +422,7 @@ func do_show(index int64, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(records.Close)
+	defer ntfs.DeferedCall(records.Close)
 
 	offsets := records.Offsets()
 
@@ -458,14 +458,14 @@ func do_head(index int64, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(records.Close)
+	defer ntfs.DeferedCall(records.Close)
 
 	str, err := records.MakeStream()
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(str.Close)
+	defer ntfs.DeferedCall(str.Close)
 
 	if index <= 0 {
 		index = 10
@@ -500,7 +500,7 @@ func do_tail(index int64, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(records.Close)
+	defer ntfs.DeferedCall(records.Close)
 
 	if index <= 0 {
 		index = 10
@@ -511,7 +511,7 @@ func do_tail(index int64, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(str.Close)
+	defer ntfs.DeferedCall(str.Close)
 
 	fmt.Println()
 	fmt.Println("Format:", records.GetFormatName())
@@ -540,7 +540,7 @@ func do_offsets(index int64, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(records.Close)
+	defer ntfs.DeferedCall(records.Close)
 
 	if index <= 0 {
 		index = 10
@@ -577,14 +577,14 @@ func do_show_mft(mft string, arg *tActionArg) error {
 		return err
 	}
 
-	defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
 	stream, err := states.MakeStream()
 	if err != nil {
 		return err
 	}
 
-	defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
 	fmt.Println()
 	fmt.Println("Result:")
@@ -601,13 +601,13 @@ func do_show_mft(mft string, arg *tActionArg) error {
 			}
 
 			if (state.GetType() == inspect.STATE_RECORD_TYPE_MFT) && (state.GetMftId() == mft) {
-				core.PrintStruct(state)
+				ntfs.PrintStruct(state)
 
 				return nil
 			}
 		}
 
-		return core.WrapError(fmt.Errorf("MFT %s does not exist", mft))
+		return ntfs.WrapError(fmt.Errorf("MFT %s does not exist", mft))
 	}
 
 	var list []inspect.IStateRecord
@@ -628,7 +628,7 @@ func do_show_mft(mft string, arg *tActionArg) error {
 		}
 	}
 
-	core.PrintStruct(list)
+	ntfs.PrintStruct(list)
 
 	return nil
 }

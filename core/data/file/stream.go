@@ -3,8 +3,8 @@ package file
 import (
 	"reflect"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
 )
 
 type IStreamItem interface {

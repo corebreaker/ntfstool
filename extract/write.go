@@ -3,8 +3,8 @@ package extract
 import (
 	"os"
 
-	"essai/ntfstool/core"
-	datafile "essai/ntfstool/core/data/file"
+	"github.com/corebreaker/ntfstool/core"
+	datafile "github.com/corebreaker/ntfstool/core/data/file"
 )
 
 type FileWriter struct {

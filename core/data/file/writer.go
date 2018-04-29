@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/core/data"
-	"essai/ntfstool/core/data/codec"
+	"github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	"github.com/corebreaker/ntfstool/core/data/codec"
 )
 
 type DataWriter struct {

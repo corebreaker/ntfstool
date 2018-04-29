@@ -4,10 +4,10 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"essai/ntfstool/core"
-	"essai/ntfstool/extract"
-
 	"github.com/gobwas/glob"
+
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/extract"
 )
 
 type tNodePattern struct {
@@ -55,7 +55,7 @@ func parseNodePattern(src string, tree *extract.Tree) (*tNodePattern, error) {
 		if part[0] == '@' {
 			id := part[1:]
 			if _, err := hex.DecodeString(id); err != nil {
-				return nil, core.WrapError(err)
+				return nil, ntfs.WrapError(err)
 			}
 
 			ids[id] = true
@@ -65,7 +65,7 @@ func parseNodePattern(src string, tree *extract.Tree) (*tNodePattern, error) {
 
 		g, err := glob.Compile(part)
 		if err != nil {
-			return nil, core.WrapError(err)
+			return nil, ntfs.WrapError(err)
 		}
 
 		globs = append(globs, g)
