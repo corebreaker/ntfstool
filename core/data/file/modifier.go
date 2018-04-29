@@ -282,7 +282,6 @@ func (self *DataModifier) ReadRecord(position int64) (data.IDataRecord, error) {
 }
 
 func (self *DataModifier) GetRecordAt(index int) (data.IDataRecord, error) {
-	fmt.Println("     << I=", index, " // ", len(self.positions), self.desc.Count, len(self.desc.Indexes))
 	if err := self.check(); err != nil {
 		return nil, err
 	}
@@ -342,21 +341,13 @@ func (self *DataModifier) DelRecordAt(index int) error {
 			return err
 		}
 
-		dec_redear := bytes.NewReader(buf)
-		decoder := self.reader.WithReader(dec_redear).ToCoreDecoder()
+		decoder := self.reader.WithReader(bytes.NewReader(buf)).ToCoreDecoder()
 
 		for i := range records {
-			p, err := dec_redear.Seek(0, os.SEEK_CUR)
-			if err != nil {
-				return err
-			}
-
-			fmt.Println(fmt.Sprintf(">> P:%d IDX:%d LST:%d I:%d LEN=%d POS=%d REM=%d", old_end+p, index+i+1, last, i, len(buf), p, dec_redear.Len()))
 			r, err := core.ReadRecord(decoder)
 			if err != nil {
 				return err
 			}
-			fmt.Println("   ++", r)
 
 			records[i] = r
 		}

@@ -131,7 +131,6 @@ func (self *FileModifier) GetRecordWithId(id string) (IFile, error) {
 }
 
 func (self *FileModifier) DelRecordAt(index int) error {
-	fmt.Println("<<<<<<< I=", index, " // ", len(self.index.IdMap), self.writer.GetCount())
 	old, err := self.GetRecordAt(index)
 	if err != nil {
 		return err
