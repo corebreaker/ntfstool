@@ -138,7 +138,7 @@ func do_move_to(node_pattern string, arg *tActionArg) error {
 	var from_node *extract.Node
 
 	from := arg.GetFromParam()
-	if len(from) == 0 {
+	if len(from) > 0 {
 		node, ok := tree.Nodes[from]
 		if !ok {
 			return ntfs.WrapError(fmt.Errorf("From ID `%s` not found", from))
@@ -303,7 +303,7 @@ func do_copy_to(node_pattern string, arg *tActionArg) error {
 	var from_node *extract.Node
 
 	from := arg.GetFromParam()
-	if len(from) == 0 {
+	if len(from) > 0 {
 		node, ok := tree.Nodes[from]
 		if !ok {
 			return ntfs.WrapError(fmt.Errorf("From ID `%s` not found", from))
@@ -410,7 +410,7 @@ func do_remove_from(node_pattern string, arg *tActionArg) error {
 	var from_node *extract.Node
 
 	from := arg.GetFromParam()
-	if len(from) == 0 {
+	if len(from) > 0 {
 		node, ok := tree.Nodes[from]
 		if !ok {
 			return ntfs.WrapError(fmt.Errorf("From ID `%s` not found", from))
