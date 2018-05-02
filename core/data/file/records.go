@@ -15,6 +15,7 @@ func (*BaseDataRecord) GetPosition() int64      { return 0 }
 func (*BaseDataRecord) GetEncodingCode() string { return "" }
 func (*BaseDataRecord) String() string          { return "{NONE}" }
 func (*BaseDataRecord) GetName() string         { return "" }
+func (*BaseDataRecord) SetName(string)          {}
 func (*BaseDataRecord) GetLabel() string        { return "Other Records" }
 func (*BaseDataRecord) GetParent() data.FileRef { return 0 }
 func (*BaseDataRecord) GetIndex() int           { return 0 }

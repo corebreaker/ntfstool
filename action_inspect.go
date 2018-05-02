@@ -76,29 +76,63 @@ func do_fillinfo(arg *tActionArg) error {
 		if ok {
 			if rectyp == inspect.STATE_RECORD_TYPE_FILE {
 				rec := state.(*inspect.StateFileRecord)
-				attrs := rec.GetAttributes(ntfs.ATTR_DATA)
-				if len(attrs) == 0 {
-					no_data++
 
-					continue
+				if rec.IsDir() {
+					attrs := rec.GetAttributes(ntfs.ATTR_INDEX_ROOT)
+					if len(attrs) == 0 {
+						no_data++
+
+						continue
+					}
+				} else {
+					attrs := rec.GetAttributes(ntfs.ATTR_DATA)
+					if len(attrs) == 0 {
+						no_data++
+
+						continue
+					}
+
+					if !attrs[0].Header.NonResident.Value() {
+						resident_datas++
+					}
 				}
 
-				if !attrs[0].Header.NonResident.Value() {
-					resident_datas++
-				}
-
-				attrs = rec.GetAttributes(ntfs.ATTR_FILE_NAME)
+				attrs := rec.GetAttributes(ntfs.ATTR_FILE_NAME)
 				if len(attrs) == 0 {
 					no_name++
 				}
+
+				var fname string
 
 				for _, attr := range attrs {
 					if attr.Header.NonResident.Value() {
 						external_names++
 
-						break
+						continue
+					}
+
+					desc, err := state.GetAttributeDesc(attr)
+					if err != nil {
+						return err
+					}
+
+					attr_val, err := desc.GetValue(nil)
+					if err != nil {
+						return err
+					}
+
+					name := attr_val.GetFilename()
+
+					if attr_val.IsLongName() {
+						fname = name
+					} else {
+						if fname == "" {
+							fname = name
+						}
 					}
 				}
+
+				state.SetName(fname)
 			}
 
 			if idx_ok {
@@ -106,7 +140,7 @@ func do_fillinfo(arg *tActionArg) error {
 			}
 
 			if err := writer.Write(state); err != nil {
-				return nil
+				return err
 			}
 		}
 	}

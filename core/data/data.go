@@ -43,6 +43,7 @@ type IDataRecord interface {
 	GetPosition() int64
 	GetEncodingCode() string
 	GetName() string
+	SetName(string)
 	GetParent() FileRef
 	GetLabel() string
 	GetIndex() int

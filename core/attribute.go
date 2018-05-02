@@ -764,6 +764,10 @@ func (self *AttributeValue) GetNextEntry(entry *DirectoryEntry) (*DirectoryEntry
 		}
 	}
 
+	if entry_offset >= uint(len(self.Data)) {
+		return nil, nil
+	}
+
 	res := &DirectoryEntry{BlockOffset: block_offset, EntryOffset: entry_offset, Index: index}
 	buffer := self.Data[entry_offset:]
 

@@ -20,7 +20,6 @@ type IFile interface {
 	IsRoot() bool
 	IsFile() bool
 	IsDir() bool
-	SetName(string)
 
 	setParentIndex(*Index)
 }

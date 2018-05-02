@@ -32,6 +32,9 @@ type IStateRecord interface {
 	GetHeader() *core.RecordHeader
 	GetMftId() string
 	SetMft(state *StateMft)
+	GetAttributeDesc(attr *StateAttribute) (*core.AttributeDesc, error)
+	GetAttribute(pos int64) *StateAttribute
+	GetAttributes(attr core.AttributeType, others ...core.AttributeType) []*StateAttribute
 	Init(disk *core.DiskIO) (bool, error)
 }
 
@@ -39,11 +42,20 @@ type tNoneState struct {
 	datafile.BaseDataRecord
 }
 
-func (self *tNoneState) GetType() StateRecordType             { return STATE_RECORD_TYPE_NONE }
-func (self *tNoneState) GetHeader() *core.RecordHeader        { return nil }
-func (self *tNoneState) GetMftId() string                     { return "" }
-func (self *tNoneState) SetMft(state *StateMft)               {}
-func (self *tNoneState) Init(disk *core.DiskIO) (bool, error) { return true, nil }
+func (self *tNoneState) GetType() StateRecordType           { return STATE_RECORD_TYPE_NONE }
+func (self *tNoneState) GetHeader() *core.RecordHeader      { return nil }
+func (self *tNoneState) GetMftId() string                   { return "" }
+func (self *tNoneState) SetMft(*StateMft)                   {}
+func (self *tNoneState) Init(*core.DiskIO) (bool, error)    { return true, nil }
+func (self *tNoneState) GetAttribute(int64) *StateAttribute { return nil }
+
+func (self *tNoneState) GetAttributeDesc(*StateAttribute) (*core.AttributeDesc, error) {
+	return nil, core.WrapError(fmt.Errorf("This state has no attribute"))
+}
+
+func (self *tNoneState) GetAttributes(core.AttributeType, ...core.AttributeType) []*StateAttribute {
+	return nil
+}
 
 type tStateError struct {
 	tNoneState
@@ -95,6 +107,7 @@ func (self *StateFileRecord) GetType() StateRecordType      { return STATE_RECOR
 func (self *StateFileRecord) GetHeader() *core.RecordHeader { return &self.Header.RecordHeader }
 func (self *StateFileRecord) HasName() bool                 { return true }
 func (self *StateFileRecord) GetName() string               { return self.Name }
+func (self *StateFileRecord) SetName(name string)           { self.Name = name }
 func (self *StateFileRecord) IsDir() bool                   { return self.Header.IsDir() }
 func (self *StateFileRecord) GetParent() data.FileRef       { return self.Parent }
 func (self *StateFileRecord) Print()                        { fmt.Println("[FILE]"); core.PrintStruct(self) }
