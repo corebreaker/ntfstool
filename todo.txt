@@ -1,0 +1,2 @@
+- arg "block" à déplacer de "attribute" vers "index"
+- reader/writer d'une StateCollection à streamiser
