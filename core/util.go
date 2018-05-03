@@ -1,55 +1,71 @@
 package core
 
 import (
-    "bytes"
-    "encoding/binary"
-    "io"
-    "unicode/utf16"
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
+	"io"
+	"unicode/utf16"
+
+	"github.com/pborman/uuid"
 )
 
 func Read(buffer []byte, data interface{}) error {
-    sz := StructSize(data)
-    if len(buffer) < sz {
-        src := buffer
-        buffer = make([]byte, sz)
-        copy(buffer, src)
-    }
+	sz := StructSize(data)
+	if len(buffer) < sz {
+		src := buffer
+		buffer = make([]byte, sz)
+		copy(buffer, src)
+	}
 
-    return WrapError(binary.Read(bytes.NewReader(buffer), binary.LittleEndian, data))
+	return WrapError(binary.Read(bytes.NewReader(buffer), binary.LittleEndian, data))
 }
 
 func Write(writer io.Writer, data interface{}) error {
-    return WrapError(binary.Write(writer, binary.LittleEndian, data))
+	return WrapError(binary.Write(writer, binary.LittleEndian, data))
 }
 
 func DecodeInt(b []byte) int64 {
-    var mem [8]byte
-    var res int64
+	if len(b) == 0 {
+		return 0
+	}
 
-    buffer := mem[:]
+	var mem [8]byte
+	var res int64
 
-    copy(buffer, b)
-    Read(buffer, &res)
+	buffer := mem[:]
 
-    return res
+	copy(buffer, b)
+	Read(buffer, &res)
+
+	return res
 }
 
 func DecodeString(b []byte, sz int) string {
-    str_sz := (len(b) + 1) / 2
-    if (0 >= sz) || (sz > str_sz) {
-        sz = str_sz
-    }
+	str_sz := (len(b) + 1) / 2
+	if (0 >= sz) || (sz > str_sz) {
+		sz = str_sz
+	}
 
-    buffer := make([]byte, sz*2)
-    copy(buffer, b)
+	buffer := make([]byte, sz*2)
+	copy(buffer, b)
 
-    str16 := make([]uint16, sz)
+	str16 := make([]uint16, sz)
 
-    Read(buffer, str16)
+	Read(buffer, str16)
 
-    return string(utf16.Decode(str16))
+	return string(utf16.Decode(str16))
 }
 
 func StringSize(s string) int {
-    return len([]rune(s))
+	return len([]rune(s))
+}
+
+func NewFileId() string {
+	id := uuid.NewRandom()
+
+	res := make([]byte, len(id)*2)
+	hex.Encode(res, id)
+
+	return string(res)
 }
