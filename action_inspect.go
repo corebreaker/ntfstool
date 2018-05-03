@@ -1,415 +1,668 @@
 package main
 
 import (
-    "essai/ntfstool/core"
-    "essai/ntfstool/inspect"
-    "fmt"
-    "os"
+	"fmt"
+	"os"
+
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	datafile "github.com/corebreaker/ntfstool/core/data/file"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
-func do_state_count(arg *tActionArg) error {
-    src, err := arg.GetInput()
-    if err != nil {
-        return err
-    }
-
-    fmt.Println("Reading")
-    states, err := inspect.MakeStateReader(src)
-    if err != nil {
-        return err
-    }
-
-    defer core.DeferedCall(states.Close)
-
-    fmt.Println("Count=", states.GetCount())
-
-    return nil
-}
-
 func do_fillinfo(arg *tActionArg) error {
-    src, dest, err := arg.GetFiles()
-    if err != nil {
-        return err
-    }
+	src, dest, err := arg.GetFiles()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    states, err := inspect.MakeStateReader(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	states, err := inspect.MakeStateReader(src)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
-    disk := arg.disk.GetDisk()
-    defer core.DeferedCall(disk.Close)
+	disk := arg.disk.GetDisk()
+	defer ntfs.DeferedCall(disk.Close)
 
-    stream, err := states.MakeStream()
-    if err != nil {
-        return err
-    }
+	stream, err := states.MakeStream()
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
-    writer, err := inspect.MakeStateWriter(dest)
-    if err != nil {
-        return err
-    }
+	writer, err := inspect.MakeStateWriter(dest)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(writer.Close)
+	defer ntfs.DeferedCall(writer.Close)
 
-    i, cnt := 0, states.GetCount()
+	i, cnt := 0, states.GetCount()
+	idx_count, idx_good := 0, 0
+	resident_datas, external_names := 0, 0
+	no_name, no_data := 0, 0
 
-    fmt.Println(fmt.Sprintf("Filling (count= %d)", cnt))
-    for state := range stream {
-        progress := 100 * i / cnt
-        fmt.Printf("\rDone: %d %%", progress)
-        i++
+	fmt.Println(fmt.Sprintf("Filling (count= %d)", cnt))
+	for item := range stream {
+		progress := 100 * i / cnt
+		fmt.Printf("\rDone: %d %%", progress)
+		i++
 
-        ok, err := state.Init(disk)
-        if err != nil {
-            return err
-        }
+		state := item.Record()
+		if err := state.GetError(); err != nil {
+			return err
+		}
 
-        if ok {
-            if err := writer.Write(state); err != nil {
-                return nil
-            }
-        }
-    }
+		if state.IsNull() {
+			continue
+		}
 
-    fmt.Println("\r100 %                                                      ")
+		rectyp := state.GetType()
 
-    return nil
+		idx_ok := rectyp == inspect.STATE_RECORD_TYPE_INDEX
+		if idx_ok {
+			idx_count++
+		}
+
+		ok, err := state.Init(disk)
+		if err != nil {
+			return err
+		}
+
+		if ok {
+			if rectyp == inspect.STATE_RECORD_TYPE_FILE {
+				rec := state.(*inspect.StateFileRecord)
+
+				if rec.IsDir() {
+					attrs := rec.GetAttributes(ntfs.ATTR_INDEX_ROOT)
+					if len(attrs) == 0 {
+						no_data++
+
+						continue
+					}
+				} else {
+					attrs := rec.GetAttributes(ntfs.ATTR_DATA)
+					if len(attrs) == 0 {
+						no_data++
+
+						continue
+					}
+
+					if !attrs[0].Header.NonResident.Value() {
+						resident_datas++
+					}
+				}
+
+				attrs := rec.GetAttributes(ntfs.ATTR_FILE_NAME)
+				if len(attrs) == 0 {
+					no_name++
+				}
+
+				var fname string
+
+				for _, attr := range attrs {
+					if attr.Header.NonResident.Value() {
+						external_names++
+
+						continue
+					}
+
+					desc, err := state.GetAttributeDesc(attr)
+					if err != nil {
+						return err
+					}
+
+					attr_val, err := desc.GetValue(nil)
+					if err != nil {
+						return err
+					}
+
+					name := attr_val.GetFilename()
+
+					if attr_val.IsLongName() {
+						fname = name
+					} else {
+						if fname == "" {
+							fname = name
+						}
+					}
+				}
+
+				state.SetName(fname)
+			}
+
+			if idx_ok {
+				idx_good++
+			}
+
+			if err := writer.Write(state); err != nil {
+				return err
+			}
+		}
+	}
+
+	fmt.Println("\r100 %                                                      ")
+	fmt.Println("Indexes:                       ", idx_good, "/", idx_count)
+	fmt.Println("Records with Resident datas:   ", resident_datas)
+	fmt.Println("Records with Non-Resident name:", external_names)
+	fmt.Println("Records with no data found:    ", no_data)
+	fmt.Println("Records with no name found:    ", no_name)
+
+	return nil
 }
 
 func do_check(verbose bool, arg *tActionArg) error {
-    src, err := arg.GetInput()
-    if err != nil {
-        return err
-    }
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    states, err := inspect.MakeStateReader(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	states, err := inspect.MakeStateReader(src)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
-    stream, err := states.MakeStream()
-    if err != nil {
-        return err
-    }
+	stream, err := states.MakeStream()
+	if err != nil {
+		return err
+	}
 
-    reg := make(inspect.FileFrequencies)
+	reg := make(inspect.FileFrequencies)
 
-    non_resident_names := make([]string, 0)
-    duplicates := make([]string, 0)
+	non_resident_names := make([]string, 0)
+	duplicates := make([]string, 0)
 
-    i, sz := 0, states.GetCount()
+	i, sz := 0, states.GetCount()
 
-    fmt.Println("Searching")
-    for record := range stream {
-        fmt.Printf("\r%d %%", i*100/sz)
-        i++
+	fmt.Println("Searching")
+	for item := range stream {
+		fmt.Printf("\r%d %%", i*100/sz)
+		i++
 
-        if record.GetType() != inspect.STATE_RECORD_TYPE_FILE {
-            continue
-        }
+		record := item.Record()
+		if err := record.GetError(); err != nil {
+			return err
+		}
 
-        r := record.(*inspect.StateFileRecord)
-        for n, attr := range r.Attributes {
-            if attr.Header.AttributeType != core.ATTR_FILE_NAME {
-                continue
-            }
+		if record.IsNull() {
+			continue
+		}
 
-            if attr.Header.NonResident != core.BOOL_FALSE {
-                msg := fmt.Sprintf("  - Nonresident found at %d [attribute %d]", r.Position, n)
-                non_resident_names = append(non_resident_names, msg)
-            }
-        }
+		if record.GetType() != inspect.STATE_RECORD_TYPE_FILE {
+			continue
+		}
 
-        if (r.Names != nil) && (len(r.Names) > 0) && (r.Parent != 0) {
-            if reg.Add(r.Parent, r.Name) {
-                msg := fmt.Sprintf("  - Dupplicate found at %d [name pair %s/%v]", r.Position, r.Name, r.Parent)
-                duplicates = append(duplicates, msg)
-            }
-        }
-    }
+		r := record.(*inspect.StateFileRecord)
+		for n, attr := range r.Attributes {
+			if attr.Header.AttributeType != ntfs.ATTR_FILE_NAME {
+				continue
+			}
 
-    cnt := 0
+			if attr.Header.NonResident != ntfs.BOOL_FALSE {
+				msg := fmt.Sprintf("  - Nonresident found at %d [record %d, attribute %d]", r.Position, item.Index(), n)
+				non_resident_names = append(non_resident_names, msg)
+			}
+		}
 
-    fmt.Println("\rDone.")
+		if (r.Names != nil) && (len(r.Names) > 0) && (r.Parent != 0) {
+			if reg.Add(r.Parent, r.Name) {
+				msg := fmt.Sprintf("  - Dupplicate found at %d [name pair %s/%v]", r.Position, r.Name, r.Parent)
+				duplicates = append(duplicates, msg)
+			}
+		}
+	}
 
-    print_result := func(list []string, msg string) {
-        fmt.Println()
-        sz := len(list)
-        if sz > 0 {
-            if verbose {
-                fmt.Println(msg + ":")
-                for _, l := range list {
-                    fmt.Println(l)
-                }
-            } else {
-                fmt.Println(msg+":", sz)
-            }
+	fmt.Println("\rDone.")
 
-            cnt++
-        }
-    }
+	cnt := 0
 
-    print_result(non_resident_names, "Non-resident names")
-    print_result(duplicates, "Duplicate paths")
+	print_result := func(list []string, msg string) {
+		fmt.Println()
+		sz := len(list)
+		if sz > 0 {
+			if verbose {
+				fmt.Fprintln(os.Stderr, msg+":")
+				for _, l := range list {
+					fmt.Fprintln(os.Stderr, l)
+				}
+			} else {
+				fmt.Println(msg+":", sz)
+			}
 
-    if cnt == 0 {
-        fmt.Println("No Record found")
-    }
+			cnt++
+		}
+	}
 
-    return nil
+	print_result(non_resident_names, "Non-resident names")
+	print_result(duplicates, "Duplicate paths")
+
+	if cnt == 0 {
+		fmt.Println("No problem encountered")
+	}
+
+	return nil
 }
 
-func do_complete(arg *tActionArg) error {
-    src, dest, err := arg.GetFiles()
-    if err != nil {
-        return err
-    }
+func do_shownames(arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    states, err := inspect.MakeStateReader(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	reader, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(reader.Close)
 
-    stream, err := states.MakeStream()
-    if err != nil {
-        return err
-    }
+	stream, err := reader.MakeStream()
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
-    writer, err := inspect.MakeStateWriter(dest)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Result")
+	for item := range stream {
+		rec := item.Record()
+		if !rec.HasName() {
+			continue
+		}
 
-    defer core.DeferedCall(writer.Close)
+		fmt.Fprintln(
+			os.Stderr,
+			fmt.Sprintf("   %06d - %s", item.Index(), rec),
+		)
+	}
 
-    i, sz := 0, states.GetCount()
-
-    fmt.Println("Completing")
-    for record := range stream {
-        fmt.Printf("\r%d %%", i*100/sz)
-        i++
-
-        err := func() error {
-            if record.GetType() != inspect.STATE_RECORD_TYPE_FILE {
-                return nil
-            }
-
-            parent := core.FileReferenceNumber(0)
-            fname := ""
-
-            r := record.(*inspect.StateFileRecord)
-            for _, attr := range r.Attributes {
-                if (attr.Header.NonResident == core.BOOL_FALSE) && (attr.Header.AttributeType == core.ATTR_FILE_NAME) {
-                    desc, err := r.Header.MakeAttributeFromHeader(&attr.Header)
-                    if err != nil {
-                        return err
-                    }
-
-                    attr_val, err := desc.GetValue(nil)
-                    if err != nil {
-                        return err
-                    }
-
-                    name := attr_val.GetFilename()
-
-                    if attr_val.IsLongName() {
-                        fname = name
-                        parent = attr_val.GetParent()
-                    } else {
-                        if fname == "" {
-                            fname = name
-                        }
-
-                        if parent == 0 {
-                            parent = attr_val.GetParent()
-                        }
-                    }
-
-                    r.Names = append(r.Names, name)
-                }
-            }
-
-            r.Parent = parent
-            r.Name = fname
-
-            return nil
-        }()
-
-        if err != nil {
-            return err
-        }
-
-        if err := writer.Write(record); err != nil {
-            return err
-        }
-    }
-
-    fmt.Println("\r100 %")
-
-    return nil
+	return nil
 }
 
 func do_listnames(arg *tActionArg) error {
-    src, err := arg.GetInput()
-    if err != nil {
-        return err
-    }
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    states, err := inspect.MakeStateReader(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	states, err := inspect.MakeStateReader(src)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
-    stream, err := states.MakeStream()
-    if err != nil {
-        return err
-    }
+	stream, err := states.MakeStream()
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
-    i := 0
+	i := 0
 
-    fmt.Println("Result")
-    for record := range stream {
-        j := i
-        i++
+	fmt.Println("Result")
+	for item := range stream {
+		j := i
+		i++
 
-        if record.GetType() != inspect.STATE_RECORD_TYPE_FILE {
-            continue
-        }
+		record := item.Record()
+		record.GetName()
+		if err := record.GetError(); err != nil {
+			return err
+		}
 
-        r := record.(*inspect.StateFileRecord)
+		if record.IsNull() {
+			continue
+		}
 
-        f_type := "File"
-        if (r.Header.Flags & core.FFLAG_DIRECTORY) != core.FFLAG_NONE {
-            f_type = "Dir"
-        }
+		if record.GetType() != inspect.STATE_RECORD_TYPE_FILE {
+			continue
+		}
 
-        fmt.Fprintln(os.Stderr, fmt.Sprintf("   %06d - %d : %s { %s, Parent= %v }", j, r.Position, r.Names, f_type, r.Parent))
-    }
+		r := record.(*inspect.StateFileRecord)
 
-    return nil
+		f_type := "File"
+		if r.IsDir() {
+			f_type = "Dir"
+		}
+
+		fmt.Fprintln(
+			os.Stderr,
+			fmt.Sprintf("   %06d - %d : %s { %s, Parent= %v }", j, r.Position, r.Names, f_type, r.Parent),
+		)
+	}
+
+	return nil
 }
 
 func do_position(position int64, arg *tActionArg) error {
-    src, err := arg.GetInput()
-    if err != nil {
-        return err
-    }
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    records, err := core.MakeDataReader(src, "")
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(records.Close)
+	defer ntfs.DeferedCall(records.Close)
 
-    record, err := records.ReadRecord(position)
-    if err != nil {
-        return err
-    }
+	record, err := records.ReadRecord(position)
+	if err != nil {
+		return err
+	}
 
-    fmt.Println()
-    fmt.Println("Format:", records.GetFormatName())
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
 
-    fmt.Println()
-    fmt.Println("Result:")
-    record.Print()
+	fmt.Println()
+	fmt.Println("Result:")
+	record.Print()
 
-    return nil
+	file, ok := record.(*inspect.StateFileRecord)
+	if ok {
+		fmt.Println()
+		fmt.Println("Data:")
+		ntfs.PrintBytes(file.Header.Data[:])
+	}
+
+	return nil
+}
+
+func do_show_attribute(attribute_position int64, arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
+
+	defer ntfs.DeferedCall(records.Close)
+
+	var state data.IDataRecord
+
+	file_pos, file_pos_ok := arg.IntExt("for-file-at")
+	if file_pos_ok {
+		state, err = records.ReadRecord(file_pos)
+		if err != nil {
+			return err
+		}
+	}
+
+	file_idx, file_idx_ok := arg.IntExt("for-file")
+	if file_idx_ok {
+		state, err = records.GetRecordAt(int(file_idx))
+		if err != nil {
+			return err
+		}
+	}
+
+	file, ok := state.(*inspect.StateFileRecord)
+	if !ok {
+		return ntfs.WrapError(fmt.Errorf("Bad record type"))
+	}
+
+	attr := file.GetAttribute(attribute_position)
+	if attr == nil {
+		return ntfs.WrapError(fmt.Errorf("Attribute not found"))
+	}
+
+	desc, err := file.GetAttributeDesc(attr)
+	if err != nil {
+		return err
+	}
+
+	val, err := desc.GetValue(nil)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("File:")
+	ntfs.PrintStruct(desc)
+
+	fmt.Println()
+	fmt.Println("Value:")
+	ntfs.PrintStruct(val)
+
+	return nil
 }
 
 func do_show(index int64, arg *tActionArg) error {
-    src, err := arg.GetInput()
-    if err != nil {
-        return err
-    }
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    records, err := core.MakeDataReader(src, "")
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(records.Close)
+	defer ntfs.DeferedCall(records.Close)
 
-    record, err := records.GetRecordAt(int(index))
-    if err != nil {
-        return err
-    }
+	offsets := records.Offsets()
 
-    fmt.Println()
-    fmt.Println("Format:", records.GetFormatName())
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
+	fmt.Println("Offset:", offsets[index])
 
-    fmt.Println()
-    fmt.Println("Result:")
-    record.Print()
+	if (0 > index) || (index >= int64(records.GetCount())) {
+		return nil
+	}
 
-    return nil
+	record, err := records.GetRecordAt(int(index))
+	if err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("Result:")
+	record.Print()
+
+	return nil
+}
+
+func do_head(index int64, arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
+
+	defer ntfs.DeferedCall(records.Close)
+
+	str, err := records.MakeStream()
+	if err != nil {
+		return err
+	}
+
+	defer ntfs.DeferedCall(str.Close)
+
+	if index <= 0 {
+		index = 10
+	}
+
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
+
+	fmt.Println()
+	fmt.Println("List:")
+	for i := int64(0); i < index; i++ {
+		item := <-str
+
+		fmt.Println(">>", item.Index(), "(", item.Offset(), ")")
+		item.Record().Print()
+		fmt.Println("------------------------------------------------------------------------------")
+		fmt.Println()
+	}
+
+	return nil
+}
+
+func do_tail(index int64, arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
+
+	defer ntfs.DeferedCall(records.Close)
+
+	if index <= 0 {
+		index = 10
+	}
+
+	str, err := records.MakeStreamFrom(int64(records.GetCount()) - index)
+	if err != nil {
+		return err
+	}
+
+	defer ntfs.DeferedCall(str.Close)
+
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
+
+	fmt.Println()
+	fmt.Println("List from", index, ":")
+	for item := range str {
+		fmt.Println(">>", item.Index(), "(", item.Offset(), ")")
+		item.Record().Print()
+		fmt.Println("------------------------------------------------------------------------------")
+		fmt.Println()
+	}
+
+	return nil
+}
+
+func do_offsets(index int64, arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
+
+	defer ntfs.DeferedCall(records.Close)
+
+	if index <= 0 {
+		index = 10
+	}
+
+	offsets := records.Offsets()
+
+	lim := int64(len(offsets) - 1)
+	if index > lim {
+		index = lim
+	}
+
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
+
+	fmt.Println()
+	fmt.Println("List:")
+	for i := int64(0); i < index; i++ {
+		fmt.Println("  -", i+1, ":", offsets[i])
+	}
+
+	return nil
 }
 
 func do_show_mft(mft string, arg *tActionArg) error {
-    src, err := arg.GetInput()
-    if err != nil {
-        return err
-    }
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
 
-    fmt.Println("Reading")
-    states, err := inspect.MakeStateReader(src)
-    if err != nil {
-        return err
-    }
+	fmt.Println("Reading")
+	states, err := inspect.MakeStateReader(src)
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(states.Close)
+	defer ntfs.DeferedCall(states.Close)
 
-    stream, err := states.MakeStream()
-    if err != nil {
-        return err
-    }
+	stream, err := states.MakeStream()
+	if err != nil {
+		return err
+	}
 
-    defer core.DeferedCall(stream.Close)
+	defer ntfs.DeferedCall(stream.Close)
 
-    fmt.Println()
-    fmt.Println("Result:")
-    if mft != "" {
-        for state := range stream {
-            if (state.GetType() == inspect.STATE_RECORD_TYPE_MFT) && (state.GetMftId() == mft) {
-                core.PrintStruct(state)
+	fmt.Println()
+	fmt.Println("Result:")
+	if mft != "" {
+		for item := range stream {
+			state := item.Record()
 
-                return nil
-            }
-        }
+			if err := state.GetError(); err != nil {
+				return err
+			}
 
-        return core.WrapError(fmt.Errorf("MFT %s does not exist", mft))
-    }
+			if state.IsNull() {
+				continue
+			}
 
-    var list []inspect.IStateRecord
+			if (state.GetType() == inspect.STATE_RECORD_TYPE_MFT) && (state.GetMftId() == mft) {
+				ntfs.PrintStruct(state)
 
-    for state := range stream {
-        if state.GetType() == inspect.STATE_RECORD_TYPE_MFT {
-            list = append(list, state)
-        }
-    }
+				return nil
+			}
+		}
 
-    core.PrintStruct(list)
+		return ntfs.WrapError(fmt.Errorf("MFT %s does not exist", mft))
+	}
 
-    return nil
+	var list []inspect.IStateRecord
+
+	for item := range stream {
+		state := item.Record()
+
+		if err := state.GetError(); err != nil {
+			return err
+		}
+
+		if state.IsNull() {
+			continue
+		}
+
+		if state.GetType() == inspect.STATE_RECORD_TYPE_MFT {
+			list = append(list, state)
+		}
+	}
+
+	ntfs.PrintStruct(list)
+
+	return nil
 }

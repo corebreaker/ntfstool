@@ -1,260 +1,317 @@
 package main
 
 import (
-    "compress/gzip"
-    "encoding/gob"
-    "errors"
-    "fmt"
-    "path/filepath"
-    "strings"
+	"errors"
+	"fmt"
+	"strings"
 
-    "github.com/siddontang/go/ioutil2"
+	"github.com/siddontang/go/ioutil2"
 
-    ntfs "essai/ntfstool/core"
-    "essai/ntfstool/inspect"
+	ntfs "github.com/corebreaker/ntfstool/core"
+	"github.com/corebreaker/ntfstool/core/data"
+	datafile "github.com/corebreaker/ntfstool/core/data/file"
+	"github.com/corebreaker/ntfstool/inspect"
 )
 
 var (
-    actions = []iActionDef{
-        tStringActionDef{handler: do_count, name: "count"},
-        tStringActionDef{handler: do_scan, name: "scan"},
-        tStringActionDef{handler: do_set_source, name: "in", next: true},
-        tStringActionDef{handler: do_set_destination, name: "out", next: true},
-        tDefaultActionDef{handler: do_convert, name: "convert"},
-        tDefaultActionDef{handler: do_file_count, name: "file-count"},
-        tDefaultActionDef{handler: do_state_count, name: "state-count"},
-        tIntegerActionDef{handler: do_show, name: "show"},
-        tIntegerActionDef{handler: do_position, name: "at"},
-        tStringActionDef{handler: do_show_mft, name: "show-mft"},
-        tBoolActionDef{handler: do_check, name: "check"},
-        tDefaultActionDef{handler: do_listnames, name: "list-names"},
-        tDefaultActionDef{handler: do_complete, name: "complete"},
-        tConfigActionDef{handler: do_open_disk},
-        tStringActionDef{handler: do_list_files, name: "ls"},
-        tIntegerActionDef{handler: do_copy_file, name: "cp"},
-        tDefaultActionDef{handler: do_fillinfo, name: "fill"},
-        tDefaultActionDef{handler: do_fixmft, name: "fix-mft"},
-        tDefaultActionDef{handler: do_mkfilelist, name: "make-filelist"},
-        tIntegerActionDef{handler: do_start, name: "start", next: true, index: true},
-        tIntegerActionDef{handler: do_mft, name: "mft", next: true, index: true},
-        tDefaultActionDef{handler: do_names, name: "names"},
-        tIntegerActionDef{handler: do_record, name: "record", index: true},
-        tIntegerActionDef{handler: do_file, name: "file"},
-    }
+	actions = []iActionDef{
+		tDefaultActionDef{handler: do_help, name: "help"},
+
+		// Commands using input/output files
+		tStringActionDef{handler: do_set_source, name: "in", next: true},
+		tStringActionDef{handler: do_set_destination, name: "out", next: true},
+		tStringActionDef{handler: do_set_file, name: "file", next: true},
+		tStringActionDef{handler: do_set_from_param, name: "from", next: true},
+		tStringActionDef{handler: do_set_into_param, name: "to", next: true},
+		tDefaultActionDef{handler: do_record_count, name: "record-count"},
+		tIntegerActionDef{handler: do_show, name: "show"},
+		tIntegerActionDef{handler: do_head, name: "head"},
+		tIntegerActionDef{handler: do_tail, name: "tail"},
+		tIntegerActionDef{handler: do_offsets, name: "positions"},
+		tDefaultActionDef{handler: do_find_state, name: "find"},
+		tStringActionDef{handler: do_show_id, name: "id"},
+		tStringActionDef{handler: do_show_parent, name: "parent"},
+		tIntegerActionDef{handler: do_show_parent_ref, name: "parent-ref"},
+		tIntegerActionDef{handler: do_position, name: "at", offset: true},
+		tBoolActionDef{handler: do_check, name: "check"},
+		tIntegerActionDef{handler: do_show_attribute, name: "show-attr"},
+		tStringActionDef{handler: do_show_mft, name: "show-mft"},
+		tDefaultActionDef{handler: do_listnames, name: "list-names"},
+		tDefaultActionDef{handler: do_shownames, name: "show-names"},
+		tDefaultActionDef{handler: do_scan, name: "scan"},
+		tStringActionDef{handler: do_list_files, name: "ls"},
+		tStringActionDef{handler: do_move_to, name: "mv"},
+		tStringActionDef{handler: do_copy_to, name: "cp"},
+		tStringActionDef{handler: do_remove_from, name: "rm"},
+		tStringActionDef{handler: do_make_dir, name: "mkdir"},
+		tDefaultActionDef{handler: do_compact, name: "compact"},
+
+		// Commands to use partition with the help of input/output files
+		tConfigActionDef{handler: do_open_disk},
+		tStringActionDef{handler: do_save_file, name: "save"},
+		tDefaultActionDef{handler: do_fillinfo, name: "fill"},
+		tBoolActionDef{handler: do_fixmft, name: "fix-mft"},
+		tBoolActionDef{handler: do_mkfilelist, name: "make-filelist"},
+		tDefaultActionDef{handler: do_complete, name: "complete"},
+
+		// Command to explore partition
+		tIntegerActionDef{handler: do_start, name: "start", next: true, offset: true},
+		tIntegerActionDef{handler: do_mft, name: "mft", next: true, offset: true},
+		tStringActionDef{handler: do_count, name: "count"},
+		tDefaultActionDef{handler: do_mftnames, name: "mft-names"},
+		tIntegerActionDef{handler: do_record, name: "record", offset: true},
+		tIntegerActionDef{handler: do_sector, name: "sector", offset: true},
+		tIntegerActionDef{handler: do_cluster, name: "cluster", offset: true},
+		tIntegerActionDef{handler: do_file_num, name: "file-num"},
+	}
 )
 
 func do_open_disk(arg *tActionArg) error {
-    disk, err := inspect.OpenNtfsDisk(arg.partition, 0)
-    if err != nil {
-        return err
-    }
+	disk, err := inspect.OpenNtfsDisk(arg.partition, 0)
+	if err != nil {
+		return err
+	}
 
-    arg.disk = disk
-
-    return nil
+	arg.disk = disk
+	return nil
 }
 
 func do_start(offset int64, arg *tActionArg) error {
-    arg.disk.SetStart(offset)
+	arg.disk.SetStart(offset)
 
-    return nil
+	return nil
 }
 
 func do_mft(offset int64, arg *tActionArg) error {
-    arg.disk.SetMftShift(offset)
+	arg.disk.SetMftShift(offset)
 
-    return nil
+	return nil
 }
+
 func do_set_source(source string, arg *tActionArg) error {
-    if source == "" {
-        return ntfs.WrapError(fmt.Errorf("No source file specified"))
-    }
+	if source == "" {
+		return ntfs.WrapError(fmt.Errorf("No source file specified"))
+	}
 
-    if !ioutil2.FileExists(source) {
-        return ntfs.WrapError(fmt.Errorf("Can't access to source file"))
-    }
+	if !ioutil2.FileExists(source) {
+		return ntfs.WrapError(fmt.Errorf("Can't access to source file"))
+	}
 
-    f, err := ntfs.OpenFile(source, ntfs.OPEN_RDONLY)
-    if err != nil {
-        return err
-    }
+	f, err := ntfs.OpenFile(source, ntfs.OPEN_RDONLY)
+	if err != nil {
+		return err
+	}
 
-    arg.source = f
+	arg.source = f
 
-    return nil
+	return nil
 }
 
 func do_set_destination(dest string, arg *tActionArg) error {
-    if dest == "" {
-        return ntfs.WrapError(fmt.Errorf("No destination file specified"))
-    }
+	if dest == "" {
+		return ntfs.WrapError(fmt.Errorf("No destination file specified"))
+	}
 
-    f, err := ntfs.OpenFile(dest, ntfs.OPEN_WRONLY)
-    if err != nil {
-        return err
-    }
+	f, err := ntfs.OpenFile(dest, ntfs.OPEN_WRONLY)
+	if err != nil {
+		return err
+	}
 
-    arg.dest = f
+	arg.dest = f
 
-    return nil
+	return nil
+}
+
+func do_set_file(pathname string, arg *tActionArg) error {
+	if pathname == "" {
+		return ntfs.WrapError(fmt.Errorf("No destination file specified"))
+	}
+
+	f, err := ntfs.OpenFile(pathname, ntfs.OPEN_RDWR)
+	if err != nil {
+		return err
+	}
+
+	arg.file = f
+
+	return nil
+}
+
+func do_set_from_param(val string, arg *tActionArg) error {
+	arg.from = val
+
+	return nil
+}
+
+func do_set_into_param(val string, arg *tActionArg) error {
+	arg.into = val
+
+	return nil
 }
 
 func do_count(pattern string, arg *tActionArg) error {
-    if pattern == "" {
-        return ntfs.WrapError(errors.New("No pattern specified"))
-    }
+	if pattern == "" {
+		return ntfs.WrapError(errors.New("No pattern specified"))
+	}
 
-    patterns := strings.Split(pattern, ",")
-    list := make([][]byte, len(patterns)-1)
-    for _, p := range patterns[1:] {
-        if p != "" {
-            list = append(list, []byte(p))
-        }
-    }
+	patterns := strings.Split(pattern, ",")
+	list := make([][]byte, len(patterns)-1)
+	for _, p := range patterns[1:] {
+		if p != "" {
+			list = append(list, []byte(p))
+		}
+	}
 
-    indexes, err := inspect.FindPositionsWithPattern(arg.partition, []byte(patterns[0]), list...)
-    if err != nil {
-        return err
-    }
+	indexes, err := inspect.FindPositionsWithPattern(arg.partition, []byte(patterns[0]), list...)
+	if err != nil {
+		return err
+	}
 
-    lengths := make([]int, len(patterns))
-    for i, idx_list := range indexes {
-        lengths[i] = len(idx_list)
-    }
+	lengths := make([]int, len(patterns))
+	for i, idx_list := range indexes {
+		lengths[i] = len(idx_list)
+	}
 
-    fmt.Println("Results:")
-    for i, idx_list := range indexes {
-        sz := lengths[i]
-        if sz > 10 {
-            sz = 10
-        }
+	fmt.Println("Results:")
+	for i, idx_list := range indexes {
+		sz := lengths[i]
+		if sz > 10 {
+			sz = 10
+		}
 
-        fmt.Println(fmt.Sprintf("  - `%s`: Count=%d Firsts=%v", patterns[i], lengths[i], idx_list[:sz]))
-    }
+		fmt.Println(fmt.Sprintf("  - `%s`: Count=%d Firsts=%v", patterns[i], lengths[i], idx_list[:sz]))
+	}
 
-    return nil
+	return nil
 }
 
-func do_names(arg *tActionArg) error {
-    fmt.Println()
-    fmt.Println("Names:")
-    for i := ntfs.FileReferenceNumber(0); true; i++ {
-        var val ntfs.RecordHeader
+func do_record_count(arg *tActionArg) error {
+	src, err := arg.GetInput()
+	if err != nil {
+		return err
+	}
 
-        if err := arg.disk.ReadRecordHeaderFromRef(i, &val); err != nil {
-            return err
-        }
+	fmt.Println("Reading")
+	records, err := datafile.MakeDataReader(src, datafile.ANY_FILEFORMAT)
+	if err != nil {
+		return err
+	}
 
-        if !val.Type.IsGood() {
-            return nil
-        }
+	defer ntfs.DeferedCall(records.Close)
 
-        if val.Type != ntfs.RECTYP_FILE {
-            continue
-        }
+	fmt.Println()
+	fmt.Println("Format:", records.GetFormatName())
 
-        var file ntfs.FileRecord
+	fmt.Println()
+	for rec_type, count := range records.GetCounts() {
+		fmt.Println(rec_type.GetLabel(), "=", count)
+	}
 
-        if err := arg.disk.ReadFileRecordFromRef(i, &file); err != nil {
-            return err
-        }
+	fmt.Println()
+	fmt.Println("Total Record Count =", records.GetCount())
 
-        name, err := arg.disk.GetFileRecordFilename(&file)
-        if err != nil {
-            return err
-        }
+	return nil
+}
 
-        if name == "" {
-            continue
-        }
+func do_mftnames(arg *tActionArg) error {
+	fmt.Println()
+	fmt.Println("Names:")
+	for i := data.FileRef(0); true; i++ {
+		var val ntfs.RecordHeader
 
-        fmt.Println(fmt.Sprintf("  - %d : %s", i.GetFileIndex(), name))
-    }
+		if err := arg.disk.ReadRecordHeaderFromRef(i, &val); err != nil {
+			return err
+		}
 
-    return nil
+		if !val.Type.IsGood() {
+			return nil
+		}
+
+		if val.Type != ntfs.RECTYP_FILE {
+			continue
+		}
+
+		var file ntfs.FileRecord
+
+		if err := arg.disk.ReadFileRecordFromRef(i, &file); err != nil {
+			return err
+		}
+
+		name, err := arg.disk.GetFileRecordFilename(&file)
+		if err != nil {
+			return err
+		}
+
+		if name == "" {
+			continue
+		}
+
+		fmt.Println(fmt.Sprintf("  - %d : %s", i.GetFileIndex(), name))
+	}
+
+	return nil
 }
 
 func do_record(record_num int64, arg *tActionArg) error {
-    var record ntfs.RecordHeader
+	var record ntfs.RecordHeader
 
-    if err := arg.disk.ReadRecordHeader(record_num, &record); err != nil {
-        return err
-    }
+	if err := arg.disk.ReadRecordHeader(record_num, &record); err != nil {
+		return err
+	}
 
-    fmt.Println()
-    fmt.Println("Record:")
-    ntfs.PrintStruct(record)
+	fmt.Println()
+	fmt.Println("Record:")
+	ntfs.PrintStruct(record)
 
-    return nil
+	return nil
 }
 
-func do_scan(destination string, arg *tActionArg) error {
-    if destination == "" {
-        dir, err := ntfs.GetDirectory()
-        if err != nil {
-            return err
-        }
+func do_sector(offset int64, arg *tActionArg) error {
+	var sector [512]byte
 
-        destination = filepath.Join(dir, "records.dat")
-    }
+	num := (offset + 511) / 512
 
-    return inspect.Scan(arg.partition, destination)
+	disk := arg.disk.GetDisk()
+	defer ntfs.DeferedCall(disk.Close)
+
+	if err := disk.ReadSector(num, sector[:]); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("Content:")
+	fmt.Printf("Content at %d:", num)
+	fmt.Println()
+	ntfs.PrintBytes(sector[:])
+
+	return nil
 }
 
-func do_convert(arg *tActionArg) error {
-    in, out, err := arg.GetFiles()
-    if err != nil {
-        return err
-    }
+func do_cluster(offset int64, arg *tActionArg) error {
+	var cluster [4096]byte
 
-    defer ntfs.DeferedCall(in.Close)
-    defer ntfs.DeferedCall(out.Close)
+	num := (offset + 4095) / 4096
 
-    type StateCollection []inspect.IStateRecord
+	disk := arg.disk.GetDisk()
+	defer ntfs.DeferedCall(disk.Close)
 
-    fmt.Println("Reading")
-    coll, err := func() (StateCollection, error) {
-        uncomp, err := gzip.NewReader(in)
-        if err != nil {
-            return nil, ntfs.WrapError(err)
-        }
+	if err := disk.ReadCluster(num, cluster[:]); err != nil {
+		return err
+	}
 
-        defer ntfs.DeferedCall(uncomp.Close)
+	fmt.Println()
+	fmt.Printf("Content at %d:", num*8)
+	fmt.Println()
+	ntfs.PrintBytes(cluster[:])
 
-        dec := gob.NewDecoder(uncomp)
+	return nil
+}
 
-        var res StateCollection
+func do_scan(arg *tActionArg) error {
+	destination, err := arg.GetOutput()
+	if err != nil {
+		return err
+	}
 
-        if err := dec.Decode(&res); err != nil {
-            return nil, ntfs.WrapError(err)
-        }
-
-        return res, nil
-    }()
-
-    if err != nil {
-        return err
-    }
-
-    fmt.Println("")
-    fmt.Println("Writing")
-    writer, err := inspect.MakeStateWriter(out)
-    if err != nil {
-        return err
-    }
-
-    defer ntfs.DeferedCall(writer.Close)
-
-    cnt := len(coll)
-    for i, rec := range coll {
-        fmt.Printf("\rDone: %d %%", 100*i/cnt)
-
-        if err := writer.Write(rec); err != nil {
-            return err
-        }
-    }
-
-    fmt.Println("\r100%                                                      ")
-
-    return nil
+	return inspect.Scan(arg.partition, destination)
 }
